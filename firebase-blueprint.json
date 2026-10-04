@@ -1,0 +1,259 @@
+{
+  "entities": {
+    "Customer": {
+      "title": "Customer",
+      "description": "Hashtag Pizza customer profile with contact information, order stats, and loyalty tier.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Full name of the customer",
+          "maxLength": 100
+        },
+        "phone": {
+          "type": "string",
+          "description": "Primary phone number for contact and order tracking",
+          "maxLength": 20
+        },
+        "email": {
+          "type": "string",
+          "description": "Customer email address",
+          "maxLength": 100
+        },
+        "address": {
+          "type": "string",
+          "description": "Delivery address in Birgunj",
+          "maxLength": 250
+        },
+        "totalOrders": {
+          "type": "number",
+          "description": "Total number of orders placed"
+        },
+        "totalSpend": {
+          "type": "number",
+          "description": "Total lifetime spend in NPR"
+        },
+        "loyaltyPoints": {
+          "type": "number",
+          "description": "Accrued loyalty reward points"
+        },
+        "tier": {
+          "type": "string",
+          "enum": ["Bronze", "Silver", "Gold", "VIP"],
+          "description": "Customer loyalty tier"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Internal CRM notes or dietary preferences",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last updated timestamp"
+        }
+      },
+      "required": ["name", "phone", "totalOrders", "totalSpend", "loyaltyPoints", "tier", "createdAt", "updatedAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Pizzeria food and beverage order record.",
+      "type": "object",
+      "properties": {
+        "customerName": {
+          "type": "string",
+          "description": "Customer name",
+          "maxLength": 100
+        },
+        "customerPhone": {
+          "type": "string",
+          "description": "Customer contact phone",
+          "maxLength": 20
+        },
+        "orderType": {
+          "type": "string",
+          "enum": ["dine-in", "takeaway", "delivery"],
+          "description": "Fulfillment method"
+        },
+        "deliveryAddress": {
+          "type": "string",
+          "description": "Delivery address or table number",
+          "maxLength": 250
+        },
+        "itemsSummary": {
+          "type": "string",
+          "description": "Formatted summary of ordered items and sizes",
+          "maxLength": 1000
+        },
+        "total": {
+          "type": "number",
+          "description": "Order total in NPR"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["Cash", "Fonepay/QR", "Card"],
+          "description": "Payment method"
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["pending", "paid"],
+          "description": "Payment clearance status"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["new", "kitchen", "ready", "delivered", "cancelled"],
+          "description": "Kitchen and delivery status"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Special preparation instructions or spice level",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Order placement timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Order status update timestamp"
+        }
+      },
+      "required": ["customerName", "customerPhone", "orderType", "itemsSummary", "total", "paymentMethod", "paymentStatus", "status", "createdAt", "updatedAt"]
+    },
+    "Campaign": {
+      "title": "Campaign",
+      "description": "Promotional or loyalty campaign sent to customer segments.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Campaign title or headline",
+          "maxLength": 150
+        },
+        "targetSegment": {
+          "type": "string",
+          "description": "Target audience segment",
+          "maxLength": 100
+        },
+        "message": {
+          "type": "string",
+          "description": "Promo message or WhatsApp template copy",
+          "maxLength": 1000
+        },
+        "discountCode": {
+          "type": "string",
+          "description": "Discount coupon code",
+          "maxLength": 30
+        },
+        "discountPercent": {
+          "type": "number",
+          "description": "Discount percentage"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "active", "completed"],
+          "description": "Campaign status"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["title", "targetSegment", "message", "status", "createdAt", "updatedAt"]
+    },
+    "LoyaltyRedemption": {
+      "title": "LoyaltyRedemption",
+      "description": "Records of rewards redeemed by customers using their loyalty points.",
+      "type": "object",
+      "properties": {
+        "customerId": {
+          "type": "string",
+          "description": "ID of the customer redeeming points"
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Customer name"
+        },
+        "customerPhone": {
+          "type": "string",
+          "description": "Customer phone"
+        },
+        "rewardId": {
+          "type": "string",
+          "description": "ID of the redeemed reward from catalog"
+        },
+        "rewardTitle": {
+          "type": "string",
+          "description": "Title of the reward"
+        },
+        "pointsDeducted": {
+          "type": "number",
+          "description": "Points deducted from balance"
+        },
+        "redemptionCode": {
+          "type": "string",
+          "description": "Unique redemption voucher code"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "used", "cancelled"],
+          "description": "Voucher status"
+        },
+        "rewardType": {
+          "type": "string",
+          "enum": ["discount_amount", "discount_percent", "free_item"],
+          "description": "Type of reward"
+        },
+        "rewardValue": {
+          "type": "string",
+          "description": "Value or free item label"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of redemption"
+        }
+      },
+      "required": ["customerId", "customerPhone", "rewardId", "rewardTitle", "pointsDeducted", "redemptionCode", "status", "rewardType", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/customers/{customerId}": {
+      "schema": {
+        "$ref": "#/entities/Customer"
+      },
+      "description": "Collection of customer records managed via Hashtag Pizza CRM."
+    },
+    "/orders/{orderId}": {
+      "schema": {
+        "$ref": "#/entities/Order"
+      },
+      "description": "Collection of customer orders from web storefront and direct kitchen orders."
+    },
+    "/campaigns/{campaignId}": {
+      "schema": {
+        "$ref": "#/entities/Campaign"
+      },
+      "description": "Promotional CRM marketing campaigns and discount blasts."
+    },
+    "/loyalty_redemptions/{redemptionId}": {
+      "schema": {
+        "$ref": "#/entities/LoyaltyRedemption"
+      },
+      "description": "Customer loyalty reward redemptions and discounts awarded."
+    }
+  }
+}

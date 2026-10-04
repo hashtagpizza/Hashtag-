@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Syne", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-script: "Caveat", cursive;
+}
+
+@layer base {
+  ::selection {
+    background-color: #E31B23;
+    color: white;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+}

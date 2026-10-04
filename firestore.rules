@@ -1,0 +1,104 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny all unhandled collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Helper Primitives
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email == 'hashtagpizzainfo@gmail.com' && request.auth.token.email_verified == true)
+      );
+    }
+
+    // Customer Validation Blueprint
+    function isValidCustomer(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.phone is string && data.phone.size() >= 7 && data.phone.size() <= 20 &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 100)) &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 250)) &&
+             data.totalOrders is number && data.totalOrders >= 0 &&
+             data.totalSpend is number && data.totalSpend >= 0 &&
+             data.loyaltyPoints is number && data.loyaltyPoints >= 0 &&
+             data.tier in ['Bronze', 'Silver', 'Gold', 'VIP'] &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 10));
+    }
+
+    // Order Validation Blueprint
+    function isValidOrder(data) {
+      return data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 100 &&
+             data.customerPhone is string && data.customerPhone.size() >= 7 && data.customerPhone.size() <= 20 &&
+             data.orderType in ['dine-in', 'takeaway', 'delivery'] &&
+             (!('deliveryAddress' in data) || (data.deliveryAddress is string && data.deliveryAddress.size() <= 250)) &&
+             data.itemsSummary is string && data.itemsSummary.size() > 0 && data.itemsSummary.size() <= 1000 &&
+             data.total is number && data.total >= 0 &&
+             data.paymentMethod in ['Cash', 'Fonepay/QR', 'Card'] &&
+             data.paymentStatus in ['pending', 'paid'] &&
+             data.status in ['new', 'kitchen', 'ready', 'delivered', 'cancelled'] &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 300));
+    }
+
+    // Campaign Validation Blueprint
+    function isValidCampaign(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() <= 150 &&
+             data.targetSegment is string && data.targetSegment.size() > 0 && data.targetSegment.size() <= 100 &&
+             data.message is string && data.message.size() > 0 && data.message.size() <= 1000 &&
+             (!('discountCode' in data) || (data.discountCode is string && data.discountCode.size() <= 30)) &&
+             (!('discountPercent' in data) || (data.discountPercent is number && data.discountPercent >= 0 && data.discountPercent <= 100)) &&
+             data.status in ['draft', 'active', 'completed'];
+    }
+
+    // Admins Collection: Read & Managed by Admins
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isSignedIn();
+      allow list: if isAdmin();
+      allow write: if isValidId(adminId) && isAdmin();
+    }
+
+    // Customers Collection: CRM customer directory & Loyalty Points
+    match /customers/{customerId} {
+      allow get, list: if isValidId(customerId) || true;
+      allow create, update: if isValidId(customerId);
+      allow delete: if isAdmin();
+    }
+
+    // Orders Collection: Real-time orders pipeline
+    match /orders/{orderId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(orderId);
+      allow delete: if isAdmin();
+    }
+
+    // Campaigns Collection: Promotional CRM campaigns
+    match /campaigns/{campaignId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(campaignId);
+    }
+
+    // Loyalty Redemptions Collection: Track awards, discounts & free items
+    match /loyalty_redemptions/{redemptionId} {
+      allow get, list: if true;
+      allow create, update: if isValidId(redemptionId);
+      allow delete: if isAdmin();
+    }
+
+    // Test connection doc for initial boot check
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}
