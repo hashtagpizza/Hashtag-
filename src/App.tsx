@@ -31,6 +31,8 @@ import {
   Star,
   Gift,
   Sparkles,
+  Camera,
+  Upload,
 } from 'lucide-react';
 import {
   ASSETS,
@@ -111,6 +113,55 @@ export default function App() {
   // Loyalty Rewards & Points state
   const [isLoyaltyPassOpen, setIsLoyaltyPassOpen] = useState(false);
   const [appliedLoyaltyReward, setAppliedLoyaltyReward] = useState<LoyaltyReward | null>(null);
+
+  // Exact restaurant photo state
+  const [customStoryPhoto, setCustomStoryPhoto] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('hashtag_custom_interior_photo') || null;
+    }
+    return null;
+  });
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        if (result) {
+          setCustomStoryPhoto(result);
+          try {
+            localStorage.setItem('hashtag_custom_interior_photo', result);
+          } catch (err) {
+            console.warn('LocalStorage quota note:', err);
+          }
+          triggerToast('Loaded your exact Hashtag Pizza collage picture!');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePhotoDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        if (result) {
+          setCustomStoryPhoto(result);
+          try {
+            localStorage.setItem('hashtag_custom_interior_photo', result);
+          } catch (err) {
+            console.warn('LocalStorage quota note:', err);
+          }
+          triggerToast('Loaded your exact Hashtag Pizza collage picture!');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   useEffect(() => {
     if (selectedTable) {
@@ -754,9 +805,13 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
             {/* Left Column: Visual & Founder Milestone */}
             <div className="lg:col-span-6">
-              <div className="relative rounded-2xl overflow-hidden border border-stone-800 bg-stone-950 aspect-[16/10] sm:aspect-[4/3] shadow-2xl">
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handlePhotoDrop}
+                className="group relative rounded-2xl overflow-hidden border border-stone-800 bg-stone-950 aspect-[16/10] sm:aspect-[4/3] shadow-2xl"
+              >
                 <ResilientImage
-                  src={ASSETS.founderKitchen}
+                  src={customStoryPhoto || ASSETS.founderKitchen}
                   fallbackSrcs={[
                     '/Hashtag Pizza_ A Vibrant Restaurant Collage.png',
                     '/Hashtag_Pizza_A_Vibrant_Restaurant_Collage.png',
@@ -766,8 +821,26 @@ export default function App() {
                   alt="Hashtag Pizza authentic interior dining area, counter, and open kitchen at RB Complex, Birgunj"
                   className="w-full h-full object-cover object-center"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-stone-950/90 via-stone-950/20 to-transparent" />
-                <div className="absolute bottom-6 left-6 right-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                <div className="absolute inset-0 bg-gradient-to-t from-stone-950/90 via-stone-950/20 to-transparent pointer-events-none" />
+
+                {/* 1-Click Upload Exact Collage Picture File */}
+                <div className="absolute top-3 right-3 z-10">
+                  <label
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-900/90 hover:bg-stone-900 text-amber-300 text-xs font-bold border border-amber-500/40 shadow-xl cursor-pointer backdrop-blur-md transition-all active:scale-95"
+                    title="Click to select your exact collage picture or drag & drop it here"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Upload Exact Collage Picture</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                <div className="absolute bottom-6 left-6 right-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4 pointer-events-none">
                   <div>
                     <p className="text-xs font-medium text-[#FFD700] mb-1">
                       Est. 2022 · Adarshnagar, Birgunj

@@ -2,6 +2,44 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Fix for AI Studio iframe environment where window.fetch is shimmed with only a getter
+      (function() {
+        try {
+          const originalDefineProperty = Object.defineProperty;
+          Object.defineProperty = function(obj, prop, descriptor) {
+            if (obj === window && prop === 'fetch') {
+              let customFetch = null;
+              const getter = descriptor ? descriptor.get : null;
+              return originalDefineProperty(obj, prop, {
+                configurable: true,
+                enumerable: true,
+                get: function() {
+                  return customFetch || (getter ? getter.call(this) : window.fetch);
+                },
+                set: function(val) {
+                  customFetch = val;
+                }
+              });
+            }
+            return originalDefineProperty.apply(this, arguments);
+          };
+
+          const desc = Object.getOwnPropertyDescriptor(window, 'fetch');
+          if (desc && !desc.set && desc.configurable) {
+            let current = desc.get ? desc.get() : window.fetch;
+            originalDefineProperty(window, 'fetch', {
+              configurable: true,
+              enumerable: true,
+              get: () => current,
+              set: (v) => { current = v; }
+            });
+          }
+        } catch (e) {
+          console.warn('Fetch setter patch error:', e);
+        }
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hashtag Pizza Birgunj — Think Food, Think Hashtag Pizza</title>
     <meta name="description" content="Order fresh, delicious pizzas, gourmet burgers, Nepali momos & crispy fried chicken (CFC) from Hashtag Pizza Birgunj. Fast delivery from RB Complex, Adarshnagar." />
