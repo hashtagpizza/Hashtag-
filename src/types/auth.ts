@@ -25,6 +25,7 @@ export interface AuthContextType {
   signInWithEmail: (email: string, pass: string) => Promise<void>;
   signUpWithEmail: (email: string, pass: string, name?: string, phone?: string) => Promise<void>;
   signInAsGuest: (name?: string) => Promise<void>;
+  signInAsAdminDummy: () => Promise<void>;
   logout: () => Promise<void>;
   updateUserAddress: (address: string) => Promise<void>;
   authModalOpen: boolean;

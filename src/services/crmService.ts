@@ -23,11 +23,15 @@ import {
   LoyaltyRedemption,
   LOYALTY_REWARDS_CATALOG,
 } from '../types/crm';
+import { UserProfile, UserRole } from '../types/auth';
+import { MenuItem } from '../constants';
 
 const CUSTOMERS_COL = 'customers';
 const ORDERS_COL = 'orders';
 const CAMPAIGNS_COL = 'campaigns';
 const REDEMPTIONS_COL = 'loyalty_redemptions';
+const USERS_COL = 'users';
+const MENU_ITEMS_COL = 'menu_items';
 
 function cleanPhoneId(phone: string): string {
   return phone.replace(/[^0-9]/g, '') || 'guest_' + Date.now();
@@ -460,141 +464,106 @@ export const crmService = {
     }
   },
 
-  // Seed sample Birgunj customer and orders if database is brand new
+  // Zero fake dynamic data - all orders and records come strictly from real user interactions
   async seedIfEmpty(): Promise<void> {
+    return;
+  },
+
+  // Subscribe to Users collection
+  subscribeToUsers(callback: (users: UserProfile[]) => void) {
     try {
-      const snap = await getDocs(query(collection(db, ORDERS_COL), limit(1)));
-      if (!snap.empty) return; // already initialized
-
-      const now = new Date().toISOString();
-      const past1 = new Date(Date.now() - 25 * 60 * 1000).toISOString();
-      const past2 = new Date(Date.now() - 75 * 60 * 1000).toISOString();
-      const past3 = new Date(Date.now() - 140 * 60 * 1000).toISOString();
-
-      // Sample Birgunj Customers
-      const sampleCustomers: Customer[] = [
-        {
-          id: '9861370721',
-          name: 'Hashtag Pizzeria Birgunj (VIP Demo)',
-          phone: '9861370721',
-          email: 'hashtagpizzainfo@gmail.com',
-          address: 'RB Complex, Loharpatti Road, Adarshnagar, Birgunj',
-          totalOrders: 18,
-          totalSpend: 19800,
-          loyaltyPoints: 1980,
-          tier: 'VIP',
-          notes: 'Prefers conveyor oven crisp crust with extra oregano and jalapeño.',
-          tags: ['VIP', 'Regular', 'Birgunj Core'],
-          createdAt: past3,
-          updatedAt: now,
+      const q = query(collection(db, USERS_COL), orderBy('createdAt', 'desc'), limit(150));
+      return onSnapshot(
+        q,
+        (snapshot) => {
+          const users: UserProfile[] = snapshot.docs.map((docSnap) => ({
+            uid: docSnap.id,
+            ...(docSnap.data() as Omit<UserProfile, 'uid'>),
+          }));
+          callback(users);
         },
-        {
-          id: '9804821190',
-          name: 'Sunil Shrestha',
-          phone: '9804821190',
-          email: 'sunil.birgunj@gmail.com',
-          address: 'Main Road, Ghantaghar Chowk, Birgunj',
-          totalOrders: 6,
-          totalSpend: 6200,
-          loyaltyPoints: 620,
-          tier: 'Gold',
-          notes: 'Family loves Hashtag Special Chicken Pizza and Chicken Chilly.',
-          tags: ['Family Dine-in', 'Non-Veg Lover'],
-          createdAt: past2,
-          updatedAt: past1,
-        },
-        {
-          id: '9812490012',
-          name: 'Pooja Agarwal',
-          phone: '9812490012',
-          email: 'pooja.a@outlook.com',
-          address: 'Ranighat Road, Near Durga Mandir, Birgunj',
-          totalOrders: 4,
-          totalSpend: 3450,
-          loyaltyPoints: 345,
-          tier: 'Silver',
-          notes: 'Strictly Vegetarian: Veggie Supreme & Paneer Deluxe with Cheese Burst.',
-          tags: ['Veg Regular'],
-          createdAt: past2,
-          updatedAt: past2,
-        },
-      ];
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, USERS_COL);
+        }
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, USERS_COL);
+    }
+  },
 
-      for (const cust of sampleCustomers) {
-        const { id, ...data } = cust;
-        await setDoc(doc(db, CUSTOMERS_COL, id), data);
+  // Update user role (admin / staff / customer)
+  async updateUserRole(uid: string, role: UserRole): Promise<void> {
+    const path = `${USERS_COL}/${uid}`;
+    try {
+      await updateDoc(doc(db, USERS_COL, uid), {
+        role,
+        updatedAt: new Date().toISOString(),
+      });
+
+      // Sync admins collection
+      if (role === 'admin') {
+        await setDoc(doc(db, 'admins', uid), {
+          uid,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true }).catch(() => {});
+      } else {
+        await deleteDoc(doc(db, 'admins', uid)).catch(() => {});
       }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
+  },
 
-      // Sample Initial Pipeline Orders
-      const sampleOrders: Order[] = [
-        {
-          id: 'HTP-CONV-01',
-          customerName: 'Sunil Shrestha',
-          customerPhone: '9804821190',
-          orderType: 'delivery',
-          deliveryAddress: 'Main Road, Ghantaghar Chowk, Birgunj',
-          itemsSummary: '1x Hashtag Special Chicken Pizza (Medium, Rs. 1050), 1x Boneless Chicken Strips (6 Pcs, Rs. 350)',
-          total: 1400,
-          paymentMethod: 'Fonepay/QR',
-          paymentStatus: 'paid',
-          status: 'kitchen',
-          notes: 'Currently in 24" conveyor belt oven. Make it crispy.',
-          createdAt: past1,
-          updatedAt: now,
+  // Subscribe to Menu Items CMS
+  subscribeToMenuItems(callback: (items: MenuItem[]) => void) {
+    try {
+      return onSnapshot(
+        collection(db, MENU_ITEMS_COL),
+        (snapshot) => {
+          const items: MenuItem[] = snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<MenuItem, 'id'>),
+          }));
+          callback(items);
         },
-        {
-          id: 'HTP-DINE-02',
-          customerName: 'Pooja Agarwal',
-          customerPhone: '9812490012',
-          orderType: 'dine-in',
-          deliveryAddress: 'Table #4 (Window booth sitting)',
-          itemsSummary: '1x Veggie Supreme Pizza (Medium, Rs. 900), 1x Stuffed Garlic Bread (Rs. 250), 2x Virgin Mojito (Rs. 300)',
-          total: 1450,
-          paymentMethod: 'Cash',
-          paymentStatus: 'pending',
-          status: 'ready',
-          notes: 'Served in customer sitting area. Extra napkins.',
-          createdAt: past2,
-          updatedAt: past1,
-        },
-        {
-          id: 'HTP-NEW-03',
-          customerName: 'Amit Verma',
-          customerPhone: '9845012345',
-          orderType: 'takeaway',
-          deliveryAddress: 'Pickup counter at RB Complex',
-          itemsSummary: '2x Double Cheese Margherita (Medium, Rs. 1120), 1x Choco Lava Cake (Rs. 150)',
-          total: 1270,
-          paymentMethod: 'Fonepay/QR',
-          paymentStatus: 'paid',
-          status: 'new',
-          notes: 'Will arrive in 15 mins by motorcycle.',
-          createdAt: now,
-          updatedAt: now,
-        },
-      ];
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, MENU_ITEMS_COL);
+        }
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, MENU_ITEMS_COL);
+    }
+  },
 
-      for (const ord of sampleOrders) {
-        const { id, ...data } = ord;
-        await setDoc(doc(db, ORDERS_COL, id), data);
-      }
+  // Save or Update Menu Item
+  async saveMenuItem(item: MenuItem): Promise<void> {
+    const path = `${MENU_ITEMS_COL}/${item.id}`;
+    try {
+      await setDoc(doc(db, MENU_ITEMS_COL, item.id), item, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, path);
+    }
+  },
 
-      // Sample Initial Campaign
-      const sampleCampaign: Campaign = {
-        id: 'CMP-BIRGUNJ-WEEKEND',
-        title: 'Birgunj Weekend Pizza Fest 15% OFF',
-        targetSegment: 'Gold & VIP Loyalty Members',
-        message: 'Namaste from Hashtag Pizza! Enjoy 15% OFF on all Large Conveyor-Baked Pizzas this weekend. Use code: HASH15 at counter or WhatsApp: 9861370721.',
-        discountCode: 'HASH15',
-        discountPercent: 15,
-        status: 'active',
-        createdAt: past2,
-        updatedAt: past1,
-      };
-      const { id: campId, ...campData } = sampleCampaign;
-      await setDoc(doc(db, CAMPAIGNS_COL, campId), campData);
-    } catch (e) {
-      console.warn('Seed non-fatal note:', e);
+  // Delete Menu Item
+  async deleteMenuItem(itemId: string): Promise<void> {
+    const path = `${MENU_ITEMS_COL}/${itemId}`;
+    try {
+      await deleteDoc(doc(db, MENU_ITEMS_COL, itemId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, path);
+    }
+  },
+
+  // Toggle in-stock availability
+  async toggleMenuItemStock(itemId: string, inStock: boolean): Promise<void> {
+    const path = `${MENU_ITEMS_COL}/${itemId}`;
+    try {
+      await updateDoc(doc(db, MENU_ITEMS_COL, itemId), {
+        inStock,
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
     }
   },
 };

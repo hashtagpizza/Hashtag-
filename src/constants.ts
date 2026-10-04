@@ -26,6 +26,7 @@ export interface MenuItem {
   tag?: string;
   popular?: boolean;
   image: string;
+  inStock?: boolean;
 }
 
 export interface MenuHighlight {

@@ -45,9 +45,17 @@ import {
   ChefHat,
   KeyRound,
   LogOut,
+  Menu as MenuIcon,
+  Store,
+  ArrowLeft,
+  BookOpen,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { crmService } from '../../services/crmService';
+import { PosTerminal } from '../admin/PosTerminal';
+import { KotDisplay } from '../admin/KotDisplay';
+import { MenuCms } from '../admin/MenuCms';
+import { UsersDirectory } from '../admin/UsersDirectory';
 import {
   Customer,
   Order,
@@ -111,11 +119,32 @@ function playKitchenOrderChime() {
   }
 }
 
-type TabType = 'dashboard' | 'orders' | 'customers' | 'loyalty' | 'campaigns' | 'analytics';
+type TabType =
+  | 'pos'
+  | 'kot'
+  | 'orders'
+  | 'menu-cms'
+  | 'customers'
+  | 'users'
+  | 'tables'
+  | 'analytics';
 
 export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
   const { user, isStaff, isAdmin, openAuthModal, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabType>('pos');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [currentTime, setCurrentTime] = useState<string>('');
+
+  useEffect(() => {
+    const update = () =>
+      setCurrentTime(
+        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      );
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, []);
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -227,8 +256,6 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
-
-    crmService.seedIfEmpty();
 
     const unsubOrders = crmService.subscribeToOrders((data) => {
       if (!initialLoadDoneRef.current) {
@@ -594,31 +621,16 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
             )}
           </button>
 
-          {/* Test Chime Button */}
+          {/* Test Kitchen Chime */}
           <button
             onClick={() => {
               playKitchenOrderChime();
-              const sampleOrder = orders[0] || {
-                id: 'HTP-NEW-DEMO',
-                customerName: 'Suman Shrestha (Test Alert)',
-                customerPhone: '9861370721',
-                orderType: 'delivery',
-                deliveryAddress: 'Main Road, Adarshnagar, Birgunj',
-                itemsSummary: '1x Hashtag Special Chicken Pizza (Medium), 1x Boneless Strips (6 Pcs)',
-                total: 1400,
-                paymentMethod: 'Fonepay/QR',
-                paymentStatus: 'paid',
-                status: 'new',
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-              };
-              triggerNewOrderAlert(sampleOrder);
             }}
             className="hidden sm:flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 cursor-pointer"
-            title="Simulate / Test New Order Visual & Audio Alert"
+            title="Test Kitchen Service Chime"
           >
             <Bell className="w-3.5 h-3.5 text-amber-400" />
-            <span>Test Alert</span>
+            <span>Test Chime</span>
           </button>
 
           {/* Table QR Code Stands Manager */}
@@ -855,17 +867,6 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => {
-                      crmService.seedIfEmpty();
-                    }}
-                    className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-700 transition-colors cursor-pointer"
-                    title="Sync with Firestore"
-                  >
-                    <RefreshCw className="w-4 h-4 text-sky-400" />
-                    <span>Sync Database</span>
-                  </button>
-
                   <button
                     onClick={() => setShowNewOrderModal(true)}
                     className="flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg shadow-red-600/20 transition-all cursor-pointer"

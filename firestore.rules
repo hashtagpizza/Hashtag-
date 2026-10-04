@@ -105,6 +105,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Menu Items Collection: Storefront & Admin CMS
+    match /menu_items/{itemId} {
+      allow get, list: if true;
+      allow create, update, delete: if isValidId(itemId);
+    }
+
     // Test connection doc for initial boot check
     match /test/connection {
       allow read: if true;

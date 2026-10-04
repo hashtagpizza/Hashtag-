@@ -48,7 +48,6 @@ import { HashtagLogo } from './components/HashtagLogo';
 import { ResilientImage } from './components/ResilientImage';
 import { CrmPortal } from './components/crm/CrmPortal';
 import { crmService } from './services/crmService';
-import { PWAInstallButton } from './components/pwa/PWAInstallButton';
 import { OfflineIndicator } from './components/pwa/OfflineIndicator';
 import { TableQrModal } from './components/tables/TableQrModal';
 import { TableBanner } from './components/tables/TableBanner';
@@ -81,15 +80,7 @@ export default function App() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCrmOpen, setIsCrmOpen] = useState(false);
-  const [cart, setCart] = useState<CartItem[]>([
-    {
-      cartKey: 'nvs-2__Medium (M)',
-      item: MENU_ITEMS.find((i) => i.id === 'nvs-2') || MENU_ITEMS[0],
-      sizeLabel: 'Medium (M)',
-      unitPrice: 1050,
-      quantity: 1,
-    },
-  ]);
+  const [cart, setCart] = useState<CartItem[]>([]);
 
   // Checkout form state
   const [serviceType, setServiceType] = useState<'Delivery' | 'Take Away' | 'Dine In'>('Delivery');
@@ -419,12 +410,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-stone-900 font-sans selection:bg-[#E31B23] selection:text-white overflow-x-hidden">
-      {/* PWA 1-Click Installation Announcement Bar for Android / iPhone */}
-      <PWAInstallButton variant="banner" />
-
       {/* Top Bar Contract: 1-row, 3-zone header */}
       <header className="sticky top-0 z-40 h-16 sm:h-20 bg-[#FAF8F5]/95 backdrop-blur-md border-b border-stone-200/80 transition-all">
-        <div className="max-w-[1280px] mx-auto h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
+        <div className="max-w-[1280px] mx-auto h-full px-3.5 sm:px-6 lg:px-8 flex items-center justify-between gap-2 sm:gap-4">
           {/* Zone 1: Brand Title / Original Hashtag Pizza Logo */}
           <a
             href="#hero"
@@ -432,7 +420,7 @@ export default function App() {
               e.preventDefault();
               scrollToSection('hero');
             }}
-            className="flex items-center gap-3 focus-visible:outline-2 focus-visible:outline-[#0047AB] rounded-lg"
+            className="flex items-center gap-2 sm:gap-3 focus-visible:outline-2 focus-visible:outline-[#0047AB] rounded-lg shrink-0"
           >
             <HashtagLogo size="md" />
           </a>
@@ -440,7 +428,7 @@ export default function App() {
           {/* Zone 2: Streamlined Navigation Links */}
           <nav
             aria-label="Primary Navigation"
-            className="hidden md:flex items-center gap-6 lg:gap-8 text-sm font-semibold text-stone-700"
+            className="hidden md:flex items-center gap-5 lg:gap-8 text-sm font-semibold text-stone-700"
           >
             <button
               onClick={() => scrollToSection('interactive-menu')}
@@ -468,8 +456,8 @@ export default function App() {
             </button>
           </nav>
 
-          {/* Zone 3: Streamlined Actions (Account / UserMenu + Order Tray + Primary Order Button + Mobile Toggle) */}
-          <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Zone 3: Streamlined Actions (Account / UserMenu + Order Tray Button + Mobile Toggle) */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {/* User Account & Role-Based Menu */}
             <UserMenu
               onOpenCrm={() => setIsCrmOpen(true)}
@@ -477,42 +465,25 @@ export default function App() {
               onOpenLoyalty={() => setIsLoyaltyPassOpen(true)}
             />
 
-            {/* Order Tray Button */}
+            {/* Single High-Converting Responsive Order Tray Button */}
             <button
               onClick={() => setIsCartOpen(true)}
-              className="relative inline-flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-full border border-stone-300 bg-white hover:border-stone-400 text-stone-900 text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer shadow-2xs"
+              className="relative inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#E31B23] hover:bg-[#c8141b] text-white text-xs sm:text-sm font-bold shadow-xs transition-all active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
               aria-label="Open order tray"
             >
-              <ShoppingBag className="w-4 h-4 text-[#0047AB]" />
-              <span className="hidden sm:inline">Order Tray</span>
+              <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
+              <span className="hidden xs:inline">Order Tray</span>
               {totalCartItems > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#E31B23] text-white text-[11px] font-bold font-mono">
+                <span className="inline-flex items-center justify-center min-w-[18px] sm:min-w-[20px] h-4.5 sm:h-5 px-1 sm:px-1.5 rounded-full bg-white text-[#E31B23] text-[10px] sm:text-[11px] font-black font-mono">
                   {totalCartItems}
                 </span>
               )}
             </button>
 
-            {/* Primary Order Now Action */}
-            <motion.button
-              onClick={() => {
-                if (totalCartItems > 0) {
-                  setIsCartOpen(true);
-                } else {
-                  scrollToSection('interactive-menu');
-                }
-              }}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              className="inline-flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-full bg-[#E31B23] hover:bg-[#c8141b] text-white text-xs sm:text-sm font-bold shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <span>Order Now</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </motion.button>
-
             {/* Mobile Navigation Toggle */}
             <button
               onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
-              className="md:hidden p-2 rounded-xl border border-stone-200 bg-white text-stone-800 hover:bg-stone-50 transition-colors cursor-pointer"
+              className="md:hidden p-1.5 sm:p-2 rounded-xl border border-stone-200 bg-white text-stone-800 hover:bg-stone-50 transition-colors cursor-pointer"
               aria-label="Toggle Navigation Menu"
             >
               {isMobileNavOpen ? <X className="w-5 h-5" /> : <MenuIcon className="w-5 h-5" />}

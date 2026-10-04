@@ -246,9 +246,43 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "role", "createdAt"]
+    },
+    "MenuItem": {
+      "title": "MenuItem",
+      "description": "Menu food and beverage item for Hashtag Pizza.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "nepaliName": { "type": "string" },
+        "category": { "type": "string" },
+        "dietary": { "type": "string", "enum": ["veg", "non-veg", "all"] },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "image": { "type": "string" },
+        "badge": { "type": "string" },
+        "inStock": { "type": "boolean" },
+        "sizes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "price": { "type": "number" }
+            }
+          }
+        }
+      },
+      "required": ["name", "category", "price", "inStock"]
     }
   },
   "firestore": {
+    "/menu_items/{itemId}": {
+      "schema": {
+        "$ref": "#/entities/MenuItem"
+      },
+      "description": "Live restaurant menu items managed by CMS."
+    },
     "/users/{userId}": {
       "schema": {
         "$ref": "#/entities/User"
