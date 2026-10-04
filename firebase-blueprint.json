@@ -228,9 +228,33 @@
         }
       },
       "required": ["customerId", "customerPhone", "rewardId", "rewardTitle", "pointsDeducted", "redemptionCode", "status", "rewardType", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Authenticated user profile in the system.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "description": "Display or real name" },
+        "phoneNumber": { "type": "string", "description": "Contact phone number" },
+        "role": { "type": "string", "enum": ["admin", "staff", "customer"], "description": "Assigned authorization role" },
+        "loyaltyPoints": { "type": "number", "description": "Accumulated loyalty points" },
+        "tier": { "type": "string", "enum": ["Bronze", "Silver", "Gold", "VIP"], "description": "Loyalty tier" },
+        "address": { "type": "string", "description": "Default delivery address" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/User"
+      },
+      "description": "Collection of authenticated user profiles and permissions."
+    },
     "/customers/{customerId}": {
       "schema": {
         "$ref": "#/entities/Customer"

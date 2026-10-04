@@ -55,6 +55,9 @@ import { TableBanner } from './components/tables/TableBanner';
 import { TableSelectorModal } from './components/tables/TableSelectorModal';
 import { CustomerLoyaltyPassModal } from './components/loyalty/CustomerLoyaltyPassModal';
 import { LoyaltyReward } from './types/crm';
+import { useAuth } from './context/AuthContext';
+import { AuthModal } from './components/auth/AuthModal';
+import { UserMenu } from './components/auth/UserMenu';
 
 interface CartItem {
   cartKey: string;
@@ -65,6 +68,8 @@ interface CartItem {
 }
 
 export default function App() {
+  const { user, isStaff, isAdmin, openAuthModal, logout } = useAuth();
+
   // Menu filter & search state
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [dietaryFilter, setDietaryFilter] = useState<'all' | 'veg' | 'non-veg'>('all');
@@ -413,12 +418,12 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] text-stone-900 font-sans selection:bg-[#E31B23] selection:text-white">
+    <div className="min-h-screen bg-[#FAF8F5] text-stone-900 font-sans selection:bg-[#E31B23] selection:text-white overflow-x-hidden">
       {/* PWA 1-Click Installation Announcement Bar for Android / iPhone */}
       <PWAInstallButton variant="banner" />
 
       {/* Top Bar Contract: 1-row, 3-zone header */}
-      <header className="sticky top-0 z-40 h-20 bg-[#FAF8F5]/95 backdrop-blur-md border-b border-stone-200/80">
+      <header className="sticky top-0 z-40 h-16 sm:h-20 bg-[#FAF8F5]/95 backdrop-blur-md border-b border-stone-200/80 transition-all">
         <div className="max-w-[1280px] mx-auto h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
           {/* Zone 1: Brand Title / Original Hashtag Pizza Logo */}
           <a
@@ -463,72 +468,52 @@ export default function App() {
             </button>
           </nav>
 
-          {/* Zone 3: 2 Primary Actions (Order Tray + Popping Order Now CTA + CRM Button + PWA Install + Table QR + VIP Points) */}
+          {/* Zone 3: Streamlined Actions (Account / UserMenu + Order Tray + Primary Order Button + Mobile Toggle) */}
           <div className="flex items-center gap-2 sm:gap-2.5">
-            {/* VIP Loyalty Points & Rewards */}
-            <button
-              onClick={() => setIsLoyaltyPassOpen(true)}
-              type="button"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-stone-950 text-xs font-black transition-all shadow-xs border border-amber-500/40 cursor-pointer whitespace-nowrap active:scale-95"
-              title="Check Loyalty Points, Tiers & Redeem Free Food / Discounts"
-            >
-              <Star className="w-3.5 h-3.5 fill-stone-950" />
-              <span className="hidden sm:inline">VIP Points</span>
-              <span className="sm:hidden">Points</span>
-            </button>
+            {/* User Account & Role-Based Menu */}
+            <UserMenu
+              onOpenCrm={() => setIsCrmOpen(true)}
+              onOpenTableQr={() => setIsTableQrModalOpen(true)}
+              onOpenLoyalty={() => setIsLoyaltyPassOpen(true)}
+            />
 
-            {/* Table QR Code Stands Generator & Printer */}
-            <button
-              onClick={() => setIsTableQrModalOpen(true)}
-              type="button"
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 text-xs font-bold transition-all shadow-xs border border-amber-300 cursor-pointer whitespace-nowrap"
-              title="View & Print Table-Side QR Code Stands for All 8 Tables"
-            >
-              <QrCode className="w-4 h-4 text-amber-700" />
-              <span className="hidden sm:inline">Table QR Stands</span>
-              <span className="sm:hidden">Tables</span>
-            </button>
-
-            {/* PWA 1-Click Install Button */}
-            <PWAInstallButton variant="header" />
-
-            <button
-              onClick={() => setIsCrmOpen(true)}
-              className="hidden lg:inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm cursor-pointer whitespace-nowrap border border-slate-700 hover:border-slate-500"
-              title="Open Hashtag Pizza CRM, Orders & Kitchen Control"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>CRM Portal</span>
-            </button>
-
+            {/* Order Tray Button */}
             <button
               onClick={() => setIsCartOpen(true)}
-              className="relative inline-flex items-center gap-2 px-3.5 py-2.5 rounded-lg border border-stone-300 bg-white hover:border-stone-400 text-stone-900 text-sm font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              className="relative inline-flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-full border border-stone-300 bg-white hover:border-stone-400 text-stone-900 text-xs sm:text-sm font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer shadow-2xs"
               aria-label="Open order tray"
             >
               <ShoppingBag className="w-4 h-4 text-[#0047AB]" />
               <span className="hidden sm:inline">Order Tray</span>
-              <span className="font-mono tabular-nums text-xs font-semibold text-[#E31B23]">
-                ({totalCartItems})
-              </span>
+              {totalCartItems > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#E31B23] text-white text-[11px] font-bold font-mono">
+                  {totalCartItems}
+                </span>
+              )}
             </button>
 
+            {/* Primary Order Now Action */}
             <motion.button
-              onClick={() => setIsCartOpen(true)}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              animate={{ scale: [1, 1.035, 1] }}
-              transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg bg-[#E31B23] hover:bg-[#c8141b] text-white text-sm font-semibold shadow-sm transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              onClick={() => {
+                if (totalCartItems > 0) {
+                  setIsCartOpen(true);
+                } else {
+                  scrollToSection('interactive-menu');
+                }
+              }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-full bg-[#E31B23] hover:bg-[#c8141b] text-white text-xs sm:text-sm font-bold shadow-xs transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
               <span>Order Now</span>
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-3.5 h-3.5" />
             </motion.button>
 
+            {/* Mobile Navigation Toggle */}
             <button
               onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
-              className="md:hidden p-2.5 rounded-lg border border-stone-200 bg-white text-stone-800"
-              aria-label="Toggle Menu"
+              className="md:hidden p-2 rounded-xl border border-stone-200 bg-white text-stone-800 hover:bg-stone-50 transition-colors cursor-pointer"
+              aria-label="Toggle Navigation Menu"
             >
               {isMobileNavOpen ? <X className="w-5 h-5" /> : <MenuIcon className="w-5 h-5" />}
             </button>
@@ -543,69 +528,127 @@ export default function App() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.16 }}
-              className="md:hidden bg-[#FAF8F5] border-b border-stone-200 px-6 py-5 space-y-3 shadow-lg"
+              className="md:hidden bg-[#FAF8F5] border-b border-stone-200 px-5 py-4 space-y-3 shadow-lg"
             >
-              <div className="flex flex-col space-y-2 text-base font-semibold text-stone-800">
+              {/* Account Quick Card on Mobile */}
+              <div className="p-3 rounded-2xl bg-white border border-stone-200 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-[#0047AB] text-white flex items-center justify-center font-black text-xs">
+                      {user ? (user.displayName?.[0] || 'U') : 'G'}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-stone-900 leading-tight">
+                        {user ? user.displayName : 'Guest Customer'}
+                      </p>
+                      <p className="text-[11px] text-stone-500 capitalize">
+                        {user ? (user.role === 'admin' ? '👑 Owner' : user.role === 'staff' ? '👨‍🍳 Staff' : `⭐ ${user.tier || 'VIP'} Member`) : 'Sign in to earn points'}
+                      </p>
+                    </div>
+                  </div>
+                  {user ? (
+                    <button
+                      onClick={() => {
+                        setIsMobileNavOpen(false);
+                        logout();
+                      }}
+                      className="text-xs font-bold text-red-600 hover:underline"
+                    >
+                      Sign Out
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setIsMobileNavOpen(false);
+                        openAuthModal('signin');
+                      }}
+                      className="px-3 py-1.5 rounded-full bg-[#0047AB] text-white text-xs font-bold shadow-xs cursor-pointer"
+                    >
+                      Sign In
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Navigation Links */}
+              <div className="flex flex-col space-y-1 text-sm font-bold text-stone-800">
                 <button
-                  onClick={() => scrollToSection('interactive-menu')}
-                  className="text-left py-2 border-b border-stone-200/60"
+                  onClick={() => {
+                    setIsMobileNavOpen(false);
+                    scrollToSection('interactive-menu');
+                  }}
+                  className="text-left py-2 px-1 hover:text-[#E31B23] transition-colors border-b border-stone-100 cursor-pointer"
                 >
                   Menu & Deals
                 </button>
                 <button
-                  onClick={() => scrollToSection('our-story')}
-                  className="text-left py-2 border-b border-stone-200/60"
+                  onClick={() => {
+                    setIsMobileNavOpen(false);
+                    scrollToSection('our-story');
+                  }}
+                  className="text-left py-2 px-1 hover:text-[#E31B23] transition-colors border-b border-stone-100 cursor-pointer"
                 >
                   Our Story
                 </button>
                 <button
-                  onClick={() => scrollToSection('kitchen-setup')}
-                  className="text-left py-2 border-b border-stone-200/60"
+                  onClick={() => {
+                    setIsMobileNavOpen(false);
+                    scrollToSection('kitchen-setup');
+                  }}
+                  className="text-left py-2 px-1 hover:text-[#E31B23] transition-colors border-b border-stone-100 cursor-pointer"
                 >
                   Kitchen Setup & Sitting Area
                 </button>
                 <button
-                  onClick={() => scrollToSection('footer-contact')}
-                  className="text-left py-2 border-b border-stone-200/60"
+                  onClick={() => {
+                    setIsMobileNavOpen(false);
+                    scrollToSection('footer-contact');
+                  }}
+                  className="text-left py-2 px-1 hover:text-[#E31B23] transition-colors border-b border-stone-100 cursor-pointer"
                 >
                   Location & Contact
                 </button>
-                <div className="pt-2 flex flex-col gap-2">
-                  <button
-                    onClick={() => {
-                      setIsMobileNavOpen(false);
-                      setIsLoyaltyPassOpen(true);
-                    }}
-                    type="button"
-                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-stone-950 font-black text-xs border border-amber-500/40 shadow-xs"
-                  >
-                    <Star className="w-4 h-4 fill-stone-950" />
-                    <span>Hashtag VIP Club (Points & Free Rewards)</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsMobileNavOpen(false);
-                      setIsTableQrModalOpen(true);
-                    }}
-                    type="button"
-                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs border border-amber-300 transition-colors"
-                  >
-                    <QrCode className="w-4 h-4 text-amber-700" />
-                    <span>Table QR Code Stands (8 Tables)</span>
-                  </button>
-                  <PWAInstallButton variant="compact" className="w-full justify-center py-2.5 text-xs font-bold" />
-                </div>
+              </div>
+
+              {/* Secondary Tools in Mobile Menu */}
+              <div className="pt-1 grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    setIsMobileNavOpen(false);
+                    setIsLoyaltyPassOpen(true);
+                  }}
+                  type="button"
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold text-xs border border-amber-300 transition-colors cursor-pointer"
+                >
+                  <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
+                  <span>VIP Rewards</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setIsMobileNavOpen(false);
+                    setIsTableQrModalOpen(true);
+                  }}
+                  type="button"
+                  className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs border border-stone-300 transition-colors cursor-pointer"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-stone-600" />
+                  <span>Table QR (8)</span>
+                </button>
+              </div>
+
+              {/* Management link strictly if authenticated as staff/admin */}
+              {isStaff && (
                 <button
                   onClick={() => {
                     setIsMobileNavOpen(false);
                     setIsCrmOpen(true);
                   }}
-                  className="flex items-center justify-center gap-2 w-full py-2.5 mt-1 rounded-lg bg-slate-900 text-white font-bold text-xs border border-slate-700"
+                  className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs border border-slate-700 shadow-xs cursor-pointer"
                 >
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>CRM Portal (Staff & Kitchen)</span>
+                  <span>Store Management & Orders</span>
                 </button>
-              </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -1956,6 +1999,9 @@ export default function App() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Authentication & Authorization Modal */}
+      <AuthModal />
 
       {/* Hashtag Pizza CRM & Kitchen Control Modal */}
       <CrmPortal isOpen={isCrmOpen} onClose={() => setIsCrmOpen(false)} />

@@ -69,6 +69,15 @@ service cloud.firestore {
       allow write: if isValidId(adminId) && isAdmin();
     }
 
+    // Users Collection: Authenticated User Profiles & Roles
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin();
+    }
+
     // Customers Collection: CRM customer directory & Loyalty Points
     match /customers/{customerId} {
       allow get, list: if isValidId(customerId) || true;

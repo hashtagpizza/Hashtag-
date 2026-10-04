@@ -39,7 +39,14 @@ import {
   Utensils,
   Gift,
   Award,
+  ShieldCheck,
+  Lock,
+  Crown,
+  ChefHat,
+  KeyRound,
+  LogOut,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { crmService } from '../../services/crmService';
 import {
   Customer,
@@ -107,6 +114,7 @@ function playKitchenOrderChime() {
 type TabType = 'dashboard' | 'orders' | 'customers' | 'loyalty' | 'campaigns' | 'analytics';
 
 export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
+  const { user, isStaff, isAdmin, openAuthModal, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -344,6 +352,81 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
+  // Authorization Guard: Staff & Owner only
+  if (!isStaff) {
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-950/80 backdrop-blur-md animate-in fade-in duration-200"
+      >
+        <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-stone-200 overflow-hidden p-6 sm:p-8">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors cursor-pointer"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mb-4 shadow-xs">
+              <Lock className="w-8 h-8" />
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 mb-2">
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+              <span>Protected Staff & Manager Area</span>
+            </div>
+
+            <h2 className="font-display text-2xl font-bold text-stone-900 mb-2">
+              Staff Authorization Required
+            </h2>
+            <p className="text-xs sm:text-sm text-stone-600 leading-relaxed mb-6">
+              The CRM Portal, Live Kitchen Order Pipeline, and Customer Database are restricted to verified Hashtag Pizza staff and managers.
+            </p>
+
+            {user ? (
+              <div className="w-full p-3.5 rounded-2xl bg-stone-50 border border-stone-200 text-xs mb-6 text-left">
+                <p className="text-stone-400 font-bold uppercase tracking-wider text-[10px] mb-1">
+                  Currently Signed In
+                </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-bold text-stone-800">{user.displayName}</p>
+                    <p className="text-stone-500">{user.email || 'Customer Account'}</p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-stone-200 text-stone-700 capitalize">
+                    {user.role}
+                  </span>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="w-full space-y-2.5">
+              <button
+                type="button"
+                onClick={() => openAuthModal('signin')}
+                className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold text-sm shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
+              >
+                <KeyRound className="w-4 h-4 text-amber-400" />
+                <span>Sign In to Staff / Manager Account</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2.5 px-4 rounded-xl border border-stone-200 hover:bg-stone-50 text-stone-600 font-semibold text-xs transition-colors cursor-pointer"
+              >
+                Return to Public Website
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const handleAdvanceStatus = async (orderId: string, currentStatus: OrderStatus) => {
     let nextStatus: OrderStatus = 'kitchen';
     if (currentStatus === 'new') nextStatus = 'kitchen';
@@ -556,6 +639,29 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
             <Plus className="w-4 h-4" />
             <span>New Order</span>
           </button>
+
+          {/* Active Staff Identity Badge */}
+          {user && (
+            <div className="hidden md:flex items-center gap-2 pl-2 border-l border-slate-700">
+              <div className="flex flex-col text-right leading-none">
+                <span className="text-xs font-bold text-white max-w-[120px] truncate">
+                  {user.displayName?.split(' ')[0]}
+                </span>
+                <span className="text-[10px] text-amber-400 font-semibold">
+                  {isAdmin ? '👑 Owner' : '👨‍🍳 Staff'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => openAuthModal('signin')}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
+                title="Switch Staff Account"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           <button
             onClick={onClose}
             className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
