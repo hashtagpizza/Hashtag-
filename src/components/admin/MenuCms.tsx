@@ -23,6 +23,7 @@ export const MenuCms: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<MenuItem | null>(null);
 
   // Form State
   const [formName, setFormName] = useState('');
@@ -127,11 +128,18 @@ export const MenuCms: React.FC = () => {
         ? editingItem.id
         : 'item_' + Date.now().toString(36);
 
+      const computedHighlightGroup =
+        formCategory.startsWith('pizza') ? 'pizza' :
+        formCategory.includes('burger') ? 'burger' :
+        formCategory.includes('momo') ? 'momo' :
+        formCategory.includes('cfc') ? 'cfc' : 'all';
+
       const newItem: MenuItem = {
         id: itemId,
         name: formName.trim(),
         description: formDescription.trim(),
         category: formCategory as any,
+        highlightGroup: computedHighlightGroup,
         dietary: formDietary,
         price: formPrice,
         sizes: sizes.length > 0 ? sizes : undefined,
@@ -159,10 +167,12 @@ export const MenuCms: React.FC = () => {
     }
   };
 
-  const handleDeleteItem = async (itemId: string) => {
-    if (!window.confirm('Are you sure you want to remove this dish from the menu?')) return;
-    setItems((prev) => prev.filter((i) => i.id !== itemId));
-    await crmService.deleteMenuItem(itemId);
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete) return;
+    const targetId = itemToDelete.id;
+    setItems((prev) => prev.filter((i) => i.id !== targetId));
+    setItemToDelete(null);
+    await crmService.deleteMenuItem(targetId);
   };
 
   return (
@@ -331,7 +341,7 @@ export const MenuCms: React.FC = () => {
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => handleDeleteItem(item.id)}
+                      onClick={() => setItemToDelete(item)}
                       className="p-1.5 rounded-lg bg-slate-800 hover:bg-red-900/50 text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
                       title="Delete dish"
                     >
@@ -519,6 +529,44 @@ export const MenuCms: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Delete Confirmation Modal (Zero window.alert / window.confirm) */}
+      {itemToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center gap-3 text-red-400 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Delete Dish?</h3>
+                <p className="text-xs text-slate-400">This action cannot be undone.</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed mb-5">
+              Are you sure you want to remove <span className="text-white font-bold">"{itemToDelete.name}"</span>? It will be removed immediately from both the customer storefront and the POS terminal.
+            </p>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="px-4 py-2 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-md cursor-pointer transition-colors"
+              >
+                Yes, Delete Dish
+              </button>
+            </div>
           </div>
         </div>
       )}

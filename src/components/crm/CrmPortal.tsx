@@ -555,300 +555,338 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const navItems = [
+    { id: 'pos' as TabType, label: 'POS & Billing', icon: Receipt, badge: 'Fast' },
+    {
+      id: 'kot' as TabType,
+      label: 'Kitchen KOT',
+      icon: ChefHat,
+      badge: stats.activeKitchenOrders > 0 ? `${stats.activeKitchenOrders}` : undefined,
+      badgeColor: 'bg-amber-500 text-slate-950',
+    },
+    {
+      id: 'orders' as TabType,
+      label: 'Live Orders',
+      icon: ShoppingBag,
+      badge: `${orders.length}`,
+    },
+    { id: 'menu-cms' as TabType, label: 'Menu CMS', icon: BookOpen, badge: 'CMS' },
+    {
+      id: 'customers' as TabType,
+      label: 'Customers & VIP',
+      icon: Users,
+      badge: `${customers.length}`,
+    },
+    { id: 'users' as TabType, label: 'Users & Staff', icon: ShieldCheck },
+    { id: 'tables' as TabType, label: 'Table QR Stands', icon: QrCode, badge: '8' },
+    { id: 'analytics' as TabType, label: 'Store Sales', icon: TrendingUp },
+  ];
+
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950/80 backdrop-blur-md flex flex-col animate-in fade-in duration-200">
-      {/* Top Bar */}
-      <header className="bg-slate-900 border-b border-slate-800 text-white px-4 lg:px-8 py-3.5 flex items-center justify-between shadow-xl shrink-0">
-        <div className="flex items-center gap-4">
-          <HashtagLogo size="sm" variant="badge" />
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-black tracking-tight text-white">HASHTAG PIZZA CRM</h1>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live Firestore
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">Birgunj Kitchen, Customer 360 & Loyalty Control Hub</p>
-          </div>
-        </div>
+    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-950 text-slate-100 flex flex-row animate-in fade-in duration-200">
+      {/* Mobile Sidebar Backdrop */}
+      {isSidebarOpen && (
+        <div
+          onClick={() => setIsSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-xs md:hidden"
+        />
+      )}
 
-        {/* Global Quick Metrics */}
-        <div className="hidden md:flex items-center gap-6 text-xs text-slate-300">
-          <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
-            <Flame className="w-4 h-4 text-amber-400" />
-            <span>Kitchen Queue:</span>
-            <strong className="text-white text-sm">{stats.activeKitchenOrders} active</strong>
-          </div>
-          <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
-            <DollarSign className="w-4 h-4 text-emerald-400" />
-            <span>Today Sales:</span>
-            <strong className="text-emerald-400 text-sm">Rs. {stats.todayRevenue.toLocaleString()}</strong>
-          </div>
-          <div className="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
-            <Users className="w-4 h-4 text-sky-400" />
-            <span>Customers:</span>
-            <strong className="text-white text-sm">{stats.totalCustomers}</strong>
-          </div>
-        </div>
-
-        {/* Action Controls */}
-        <div className="flex items-center gap-2">
-          {/* Kitchen Audio Chime Toggle */}
-          <button
-            onClick={toggleSound}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
-              soundEnabled
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
-                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
-            }`}
-            title={
-              soundEnabled
-                ? 'Kitchen Audio Bell: ON (Click to Mute)'
-                : 'Kitchen Audio Bell: Muted (Click to Enable)'
-            }
-          >
-            {soundEnabled ? (
-              <>
-                <Volume2 className="w-4 h-4 text-amber-400 animate-pulse" />
-                <span className="hidden sm:inline">Chime ON</span>
-              </>
-            ) : (
-              <>
-                <VolumeX className="w-4 h-4 text-slate-400" />
-                <span className="hidden sm:inline">Muted</span>
-              </>
-            )}
-          </button>
-
-          {/* Test Kitchen Chime */}
-          <button
-            onClick={() => {
-              playKitchenOrderChime();
-            }}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 cursor-pointer"
-            title="Test Kitchen Service Chime"
-          >
-            <Bell className="w-3.5 h-3.5 text-amber-400" />
-            <span>Test Chime</span>
-          </button>
-
-          {/* Table QR Code Stands Manager */}
-          <button
-            onClick={() => setShowTableQrModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[#164699] hover:bg-[#12397c] text-white font-bold text-xs border border-blue-400/40 shadow-sm cursor-pointer"
-            title="View, Print & Download QR Stands for All 8 Tables"
-          >
-            <QrCode className="w-3.5 h-3.5 text-amber-300" />
-            <span className="hidden sm:inline">Table QR Stands (8)</span>
-            <span className="sm:hidden">Tables</span>
-          </button>
-
-          <button
-            onClick={() => setShowNewOrderModal(true)}
-            className="flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold text-xs px-3.5 py-2 rounded-lg shadow-lg shadow-red-600/20 transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Order</span>
-          </button>
-
-          {/* Active Staff Identity Badge */}
-          {user && (
-            <div className="hidden md:flex items-center gap-2 pl-2 border-l border-slate-700">
-              <div className="flex flex-col text-right leading-none">
-                <span className="text-xs font-bold text-white max-w-[120px] truncate">
-                  {user.displayName?.split(' ')[0]}
-                </span>
-                <span className="text-[10px] text-amber-400 font-semibold">
-                  {isAdmin ? '👑 Owner' : '👨‍🍳 Staff'}
-                </span>
+      {/* 1. Left Sidebar Navigation (Desktop Fixed, Mobile Slide-Over) */}
+      <aside
+        className={`fixed md:static inset-y-0 left-0 z-50 w-64 xl:w-72 bg-slate-900 border-r border-slate-800 flex flex-col justify-between transition-transform duration-200 ease-in-out shrink-0 ${
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
+      >
+        {/* Sidebar Brand Header */}
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <HashtagLogo size="sm" variant="badge" />
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-black text-sm text-white tracking-wide">HASHTAG CMS</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               </div>
-              <button
-                type="button"
-                onClick={() => openAuthModal('signin')}
-                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
-                title="Switch Staff Account"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-              </button>
+              <p className="text-[10px] text-slate-400">Birgunj Restaurant Suite</p>
             </div>
-          )}
-
+          </div>
           <button
-            onClick={onClose}
-            className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-            title="Close CRM Portal"
+            onClick={() => setIsSidebarOpen(false)}
+            className="md:hidden p-1.5 text-slate-400 hover:text-white"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
-      </header>
 
-      {/* Prominent Visual Alert Banner when a new order arrives */}
-      {activeAlertOrder && (
-        <div className="bg-gradient-to-r from-red-600 via-amber-500 to-red-600 p-[2px] shadow-2xl shadow-red-600/30 shrink-0 animate-in slide-in-from-top-3 duration-200">
-          <div className="bg-slate-950 px-4 lg:px-8 py-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="flex items-center gap-3.5">
-              <div className="w-10 h-10 rounded-xl bg-red-600/20 border border-red-500/50 flex items-center justify-center shrink-0">
-                <BellRing className="w-5 h-5 text-red-400 animate-bounce" />
+        {/* Navigation Items */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  setIsSidebarOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/80'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-slate-950' : 'text-slate-400'}`} />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                      isActive
+                        ? 'bg-slate-950 text-amber-400'
+                        : item.badgeColor || 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Sidebar Footer: Staff Card & Exit to Storefront */}
+        <div className="p-3 border-t border-slate-800 bg-slate-950/60 space-y-2">
+          <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-amber-600 flex items-center justify-center font-bold text-white text-xs shrink-0">
+                {user?.displayName?.[0] || 'A'}
               </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="bg-red-600 text-white text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full animate-pulse shadow-sm">
-                    NEW ORDER NOTIFICATION
-                  </span>
-                  <span className="font-mono text-xs font-bold text-white">#{activeAlertOrder.id}</span>
-                  <span className="text-xs text-slate-400">
-                    · {formatFullTimestamp(activeAlertOrder.createdAt).time}
-                  </span>
-                  <span className="uppercase text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">
-                    {activeAlertOrder.orderType}
-                  </span>
-                </div>
-                <div className="text-xs text-slate-200 font-semibold mt-0.5">
-                  <strong className="text-white text-sm">{activeAlertOrder.customerName}</strong> (
-                  {activeAlertOrder.customerPhone}) —{' '}
-                  <span className="text-emerald-400 font-black">Rs. {activeAlertOrder.total}</span>
-                </div>
-                <div className="text-[11px] text-slate-300 truncate max-w-2xl font-mono mt-0.5">
-                  {activeAlertOrder.itemsSummary}
-                </div>
+              <div className="overflow-hidden">
+                <p className="font-bold text-white text-xs truncate">
+                  {user?.displayName || 'Hashtag Admin'}
+                </p>
+                <p className="text-[10px] text-slate-400 truncate">
+                  {isAdmin ? '👑 Owner' : '👨‍🍳 Staff'}
+                </p>
               </div>
             </div>
+            <button
+              onClick={() => openAuthModal('signin')}
+              className="p-1 rounded text-slate-400 hover:text-white cursor-pointer"
+              title="Switch Account"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
-            <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-              <button
-                onClick={() => {
-                  setSelectedOrderForModal(activeAlertOrder);
-                  setActiveAlertOrder(null);
-                }}
-                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-md"
-              >
-                View Ticket
-              </button>
-              <button
-                onClick={async () => {
-                  await crmService.updateOrderStatus(activeAlertOrder.id, 'kitchen');
-                  setActiveAlertOrder(null);
-                }}
-                className="px-3.5 py-1.5 bg-gradient-to-r from-amber-600 to-red-600 hover:from-amber-500 hover:to-red-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shadow-md"
-              >
-                <Flame className="w-3.5 h-3.5" />
-                <span>Send to Oven</span>
-              </button>
-              <button
-                onClick={() => setActiveAlertOrder(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-                title="Dismiss Alert"
-              >
-                <X className="w-4 h-4" />
-              </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-all cursor-pointer"
+          >
+            <Store className="w-3.5 h-3.5 text-amber-400" />
+            <span>Return to Storefront</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* 2. Main Content Canvas */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-950">
+        {/* Content Top Bar */}
+        <header className="h-16 px-4 lg:px-6 bg-slate-900 border-b border-slate-800 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="md:hidden p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white cursor-pointer"
+              aria-label="Open Sidebar"
+            >
+              <MenuIcon className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                {activeTab === 'pos' && 'POS Billing Register'}
+                {activeTab === 'kot' && 'Kitchen Order Tickets (KOT)'}
+                {activeTab === 'orders' && 'Live Kitchen Orders Pipeline'}
+                {activeTab === 'menu-cms' && 'Restaurant Menu CMS'}
+                {activeTab === 'customers' && 'Customer 360 & Loyalty'}
+                {activeTab === 'users' && 'Staff & Users Directory'}
+                {activeTab === 'tables' && 'Table QR Stands & Dine-In'}
+                {activeTab === 'analytics' && 'Store Sales & Analytics'}
+              </h1>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Navigation Tabs */}
-      <nav className="bg-slate-900/90 border-b border-slate-800 px-4 lg:px-8 py-2 flex items-center justify-between overflow-x-auto shrink-0">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'dashboard'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4" />
-            <span>Dashboard & Past Orders</span>
-            <span className="bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded-full text-[10px]">
-              {orders.length}
+          {/* Right Header Utilities */}
+          <div className="flex items-center gap-2 sm:gap-3 text-xs">
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Birgunj Store Online</span>
             </span>
-          </button>
 
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'orders'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span>Kitchen Pipeline</span>
-            {stats.activeKitchenOrders > 0 && (
-              <span className="bg-amber-500 text-slate-950 px-1.5 py-0.2 rounded-full text-[10px] font-black">
-                {stats.activeKitchenOrders}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab('customers')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'customers'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            <span>Customer 360</span>
-            <span className="bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded-full text-[10px]">
-              {customers.length}
+            <span className="hidden sm:inline-block font-mono font-bold text-slate-300">
+              {currentTime}
             </span>
-          </button>
 
-          <button
-            onClick={() => setActiveTab('loyalty')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'loyalty'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <Star className="w-4 h-4 text-amber-400" />
-            <span>Loyalty & Rewards</span>
-          </button>
+            {/* Kitchen Audio Chime Toggle */}
+            <button
+              onClick={toggleSound}
+              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                soundEnabled
+                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                  : 'bg-slate-800 border-slate-700 text-slate-500'
+              }`}
+              title={soundEnabled ? 'Kitchen Bell: ON' : 'Kitchen Bell: Muted'}
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
 
-          <button
-            onClick={() => setActiveTab('campaigns')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'campaigns'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <Megaphone className="w-4 h-4 text-pink-400" />
-            <span>Marketing Campaigns</span>
-          </button>
+            <button
+              onClick={() => setShowNewOrderModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold text-xs shadow-md shadow-red-600/20 transition-all cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Add Walk-in</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'analytics'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
-            <span>Sales & Analytics</span>
-          </button>
-        </div>
+            <button
+              onClick={onClose}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs border border-slate-700 transition-colors cursor-pointer"
+              title="Return to Public Website"
+            >
+              <Store className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Exit Store</span>
+            </button>
+          </div>
+        </header>
 
-        <div className="hidden lg:flex items-center gap-2 text-xs text-slate-400">
-          <span className="text-slate-500">24" Conveyor Belt Oven:</span>
-          <span className="text-amber-400 font-semibold">Active & Baking</span>
-        </div>
-      </nav>
+        {/* Visual Alert Banner when a new order arrives */}
+        {activeAlertOrder && (
+          <div className="bg-gradient-to-r from-red-600 via-amber-500 to-red-600 p-[2px] shadow-2xl shrink-0">
+            <div className="bg-slate-950 px-4 lg:px-6 py-2.5 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <BellRing className="w-4 h-4 text-red-400 animate-bounce" />
+                <span className="font-bold text-xs text-white">
+                  New Order #{activeAlertOrder.id.slice(-6)} · {activeAlertOrder.customerName} (Rs. {activeAlertOrder.total})
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setSelectedOrderForModal(activeAlertOrder);
+                    setActiveAlertOrder(null);
+                  }}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold"
+                >
+                  View Ticket
+                </button>
+                <button
+                  onClick={() => setActiveAlertOrder(null)}
+                  className="text-slate-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-      {/* Main Tab Content */}
-      <div className="flex-1 overflow-y-auto p-4 lg:p-8 bg-slate-950 text-slate-100">
-        {/* ============================================================== */}
-        {/* TAB 0: DASHBOARD & PAST ORDERS FROM FIRESTORE */}
-        {/* ============================================================== */}
-        {activeTab === 'dashboard' && (
-          <div className="space-y-6">
-            {/* Dashboard Welcome & Header */}
+        {/* Active Module Canvas */}
+        <div className="flex-1 min-h-0 overflow-hidden">
+          {activeTab === 'pos' && (
+            <PosTerminal
+              customers={customers}
+              onOrderPlaced={() => setActiveTab('kot')}
+            />
+          )}
+
+          {activeTab === 'kot' && (
+            <KotDisplay orders={orders} />
+          )}
+
+          {activeTab === 'menu-cms' && (
+            <MenuCms />
+          )}
+
+          {activeTab === 'users' && (
+            <UsersDirectory />
+          )}
+
+          {activeTab === 'tables' && (
+            <div className="h-full overflow-y-auto p-4 sm:p-6 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+                <div>
+                  <h2 className="text-xl font-black text-white">Table QR Stands & Dine-In Management</h2>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Hashtag Pizza Birgunj features 8 dedicated dining booths. Monitor occupancy and generate stands.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowTableQrModal(true)}
+                  className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-md cursor-pointer self-start sm:self-auto"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>Open Printable Table Stands (8)</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((tableNum) => {
+                  const activeTableOrder = orders.find(
+                    (o) =>
+                      o.tableNumber === tableNum &&
+                      (o.status === 'new' || o.status === 'kitchen' || o.status === 'ready')
+                  );
+                  return (
+                    <div
+                      key={tableNum}
+                      className={`p-4 rounded-2xl border flex flex-col justify-between ${
+                        activeTableOrder
+                          ? 'bg-amber-500/10 border-amber-500/40 ring-1 ring-amber-500/20'
+                          : 'bg-slate-900 border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-bold text-sm text-white">Table #{tableNum}</span>
+                        <span
+                          className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase ${
+                            activeTableOrder
+                              ? 'bg-amber-500 text-slate-950'
+                              : 'bg-emerald-500/20 text-emerald-400'
+                          }`}
+                        >
+                          {activeTableOrder ? 'Occupied' : 'Available'}
+                        </span>
+                      </div>
+
+                      {activeTableOrder ? (
+                        <div className="text-xs space-y-1 mb-3">
+                          <p className="text-white font-bold truncate">{activeTableOrder.customerName}</p>
+                          <p className="text-amber-400 font-mono font-bold">Rs. {activeTableOrder.total}</p>
+                          <span className="text-[10px] text-slate-400 capitalize block">Status: {activeTableOrder.status}</span>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-500 mb-3">Ready for guest order</p>
+                      )}
+
+                      <button
+                        onClick={() => setShowTableQrModal(true)}
+                        className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <QrCode className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Print Stand</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'orders' && (
+            <div className="h-full overflow-y-auto p-4 lg:p-6 space-y-6">
+              {/* Dashboard Welcome & Header */}
             <div className="bg-gradient-to-r from-slate-900 via-blue-950/30 to-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -1295,14 +1333,10 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
                 </div>
               )}
             </div>
-          </div>
-        )}
 
-        {/* ============================================================== */}
-        {/* TAB 1: ORDERS & CONVEYOR KITCHEN PIPELINE */}
-        {/* ============================================================== */}
-        {activeTab === 'orders' && (
-          <div className="space-y-6">
+            {/* Live Kitchen Pipeline (Kanban) */}
+            <div className="pt-6 border-t border-slate-800 space-y-4">
+              <h3 className="text-xl font-black text-white">Live Kitchen Pipeline (Kanban)</h3>
             {/* Filter and Search Bar */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
               <div className="relative flex-1 max-w-md">
@@ -1482,6 +1516,7 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
                   )}
                 </div>
               </div>
+            </div>
             </div>
           </div>
         )}
@@ -2003,6 +2038,7 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* ================================================================== */}

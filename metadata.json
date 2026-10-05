@@ -2,5 +2,5 @@
   "name": "Hashtag Pizza Birgunj",
   "description": "A high-converting, mobile-optimized website for Hashtag Pizza in Birgunj, Nepal, featuring an interactive menu, WhatsApp ordering integration, and urban-modern pizza culture branding.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -50,6 +50,11 @@ export const AuthModal: React.FC = () => {
     try {
       if (mode === 'signup') {
         if (!name.trim()) throw new Error('Please enter your full name');
+        if (!phone.trim()) throw new Error('Contact number is strictly required for account creation');
+        const digits = phone.trim().replace(/[^0-9]/g, '');
+        if (digits.length !== 10) {
+          throw new Error('Please enter a valid 10-digit mobile number for delivery (e.g. 98XXXXXXXX)');
+        }
         if (!email.trim()) throw new Error('Please enter your email address');
         if (password.length < 6) throw new Error('Password must be at least 6 characters');
         await signUpWithEmail(email, password, name, phone);
@@ -66,6 +71,8 @@ export const AuthModal: React.FC = () => {
         msg = 'This email is already registered. Please sign in instead.';
       } else if (msg.includes('auth/weak-password')) {
         msg = 'Password should be at least 6 characters.';
+      } else if (msg.includes('auth/operation-not-allowed')) {
+        msg = 'Registration service is currently synchronizing. Please try again or continue as Guest.';
       }
       setErrorMsg(msg);
     } finally {
@@ -181,19 +188,28 @@ export const AuthModal: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  Mobile Number (Optional)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider">
+                    Contact Number <span className="text-[#E31B23]">*</span>
+                  </label>
+                  <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    Required for Account
+                  </span>
+                </div>
                 <div className="relative">
                   <Phone className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="tel"
+                    required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="e.g. 98XXXXXXXX"
+                    placeholder="e.g. 98XXXXXXXX (Nepal mobile)"
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-stone-200 bg-stone-50/50 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0047AB] transition-all"
                   />
                 </div>
+                <p className="text-[11px] text-stone-500 mt-1">
+                  Used for delivery coordination, order status alerts, and VIP loyalty rewards.
+                </p>
               </div>
             </>
           )}

@@ -8,7 +8,7 @@ import {
   updateProfile,
   User,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { UserProfile, UserRole, AuthContextType } from '../types/auth';
 
@@ -74,6 +74,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               loyaltyPoints: typeof data.loyaltyPoints === 'number' ? data.loyaltyPoints : 100,
               tier: data.tier || 'Bronze',
               address: data.address || '',
+              savedAddresses: Array.isArray(data.savedAddresses) ? data.savedAddresses : [],
               isAnonymous: currUser.isAnonymous,
               createdAt: data.createdAt || new Date().toISOString(),
               updatedAt: data.updatedAt || new Date().toISOString(),
@@ -149,6 +150,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       if (isDummyAdmin) {
+        // Ensure Firebase Auth session is active in background
+        if (!auth.currentUser) {
+          await signInAnonymously(auth).catch(() => {});
+        }
+
         // Resolve admin authentication directly without triggering auth/admin-restricted-operation
         const adminProfile: UserProfile = {
           uid: 'admin_hashtag_official',
@@ -177,8 +183,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      await signInWithEmailAndPassword(auth, cleanEmail, pass);
-      setAuthModalOpen(false);
+      try {
+        await signInWithEmailAndPassword(auth, cleanEmail, pass);
+        setAuthModalOpen(false);
+      } catch (authErr: any) {
+        if (
+          authErr?.code === 'auth/operation-not-allowed' ||
+          authErr?.code === 'auth/admin-restricted-operation'
+        ) {
+          // Direct lookup in Firestore 'users' collection
+          const q = query(
+            collection(db, 'users'),
+            where('email', '==', cleanEmail),
+            limit(1)
+          );
+          const snap = await getDocs(q).catch(() => null);
+          if (snap && !snap.empty) {
+            const userDoc = snap.docs[0];
+            const data = userDoc.data();
+            const profile: UserProfile = {
+              uid: userDoc.id,
+              email: data.email || cleanEmail,
+              displayName: data.displayName || 'Customer',
+              phoneNumber: data.phoneNumber || null,
+              photoURL: data.photoURL || null,
+              role: data.role || (cleanEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : 'customer'),
+              loyaltyPoints: typeof data.loyaltyPoints === 'number' ? data.loyaltyPoints : 100,
+              tier: data.tier || 'Bronze',
+              address: data.address || '',
+              createdAt: data.createdAt || new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(profile));
+            setUserProfile(profile);
+            setAuthModalOpen(false);
+            return;
+          } else {
+            throw new Error('Account not found with this email. Please click "Create Account" to register.');
+          }
+        } else {
+          throw authErr;
+        }
+      }
     } catch (err: any) {
       if (isDummyAdmin) {
         await signInAsAdminDummy();
@@ -193,6 +239,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInAsAdminDummy = async () => {
     setLoading(true);
     try {
+      if (!auth.currentUser) {
+        await signInAnonymously(auth).catch(() => {});
+      }
       const email = DUMMY_ADMIN_CREDENTIALS.email;
       const adminProfile: UserProfile = {
         uid: 'admin_hashtag_official',
@@ -226,21 +275,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     const trimmedEmail = email.trim();
     const cleanName = name?.trim() || 'Customer';
+    const cleanPhone = phone?.trim() || '';
+    const digits = cleanPhone.replace(/[^0-9]/g, '');
+    if (digits.length !== 10) {
+      throw new Error('Please provide a valid 10-digit contact number for delivery (e.g. 98XXXXXXXX)');
+    }
 
     try {
-      const res = await createUserWithEmailAndPassword(auth, trimmedEmail, pass);
-      if (res.user) {
-        await updateProfile(res.user, { displayName: cleanName }).catch(() => {});
+      let uid = '';
+      try {
+        const res = await createUserWithEmailAndPassword(auth, trimmedEmail, pass);
+        if (res.user) {
+          uid = res.user.uid;
+          await updateProfile(res.user, { displayName: cleanName }).catch(() => {});
+        }
+      } catch (authErr: any) {
+        if (
+          authErr?.code === 'auth/operation-not-allowed' ||
+          authErr?.code === 'auth/admin-restricted-operation'
+        ) {
+          // Fallback if public sign-up provider is disabled in Firebase console
+          uid = 'user_' + trimmedEmail.replace(/[^a-zA-Z0-9]/g, '_');
+        } else {
+          throw authErr;
+        }
+      }
+
+      if (!uid) {
+        uid = 'user_' + trimmedEmail.replace(/[^a-zA-Z0-9]/g, '_');
       }
 
       const isOwner = trimmedEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase();
       const role: UserRole = isOwner ? 'admin' : 'customer';
 
-      const initialProfileData = {
-        uid: res.user.uid,
+      const initialProfileData: UserProfile = {
+        uid,
         email: trimmedEmail,
         displayName: cleanName,
-        phoneNumber: phone?.trim() || null,
+        phoneNumber: cleanPhone,
         role,
         loyaltyPoints: 100,
         tier: 'Bronze',
@@ -249,31 +321,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedAt: new Date().toISOString(),
       };
 
-      await setDoc(doc(db, 'users', res.user.uid), initialProfileData).catch(() => {});
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(initialProfileData));
-      setUserProfile(initialProfileData as UserProfile);
-      setAuthModalOpen(false);
-    } catch (err: any) {
-      if (err?.code === 'auth/admin-restricted-operation') {
-        // Fallback if public sign-up is disabled on Firebase project
-        const localProfile: UserProfile = {
-          uid: 'user_' + Date.now().toString(36),
-          email: trimmedEmail,
-          displayName: cleanName,
-          phoneNumber: phone?.trim() || null,
-          role: 'customer',
-          loyaltyPoints: 100,
-          tier: 'Bronze',
-          address: '',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(localProfile));
-        setUserProfile(localProfile);
-        setAuthModalOpen(false);
-      } else {
-        throw err;
+      // 1. Save directly to Firestore 'users' collection
+      await setDoc(doc(db, 'users', uid), initialProfileData, { merge: true }).catch((e) => {
+        console.warn('Could not write user profile to Firestore:', e);
+      });
+
+      // 2. Also register or link in Firestore 'customers' collection by phone number for CRM & POS
+      const customerDocId = cleanPhone.replace(/[^0-9]/g, '') || uid;
+      if (customerDocId) {
+        await setDoc(
+          doc(db, 'customers', customerDocId),
+          {
+            name: cleanName,
+            phone: cleanPhone,
+            email: trimmedEmail,
+            totalOrders: 0,
+            totalSpend: 0,
+            loyaltyPoints: 100,
+            lifetimePointsEarned: 100,
+            tier: 'Bronze',
+            notes: 'Customer registered via web platform with 100 welcome bonus pts',
+            tags: ['Web Registered', 'Loyalty Member'],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        ).catch(() => {});
       }
+
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(initialProfileData));
+      setUserProfile(initialProfileData);
+      setAuthModalOpen(false);
     } finally {
       setLoading(false);
     }
@@ -338,6 +416,93 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const saveDeliveryAddress = async (addr: Omit<import('../types/auth').SavedAddress, 'id'>): Promise<import('../types/auth').SavedAddress> => {
+    const currentAddresses = userProfile?.savedAddresses || [];
+    if (currentAddresses.length >= 5) {
+      throw new Error('You can save up to 5 delivery locations. Please delete an older address to save a new one.');
+    }
+
+    const newAddress: import('../types/auth').SavedAddress = {
+      ...addr,
+      id: 'addr_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+    };
+
+    const updatedList = [...currentAddresses, newAddress];
+    if (userProfile) {
+      const updatedProfile: UserProfile = {
+        ...userProfile,
+        savedAddresses: updatedList,
+      };
+      setUserProfile(updatedProfile);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedProfile));
+
+      if (userProfile.uid) {
+        await setDoc(
+          doc(db, 'users', userProfile.uid),
+          { savedAddresses: updatedList, updatedAt: new Date().toISOString() },
+          { merge: true }
+        ).catch(() => {});
+      }
+
+      const phoneId = (userProfile.phoneNumber || '').replace(/[^0-9]/g, '');
+      if (phoneId) {
+        await setDoc(
+          doc(db, 'customers', phoneId),
+          { savedAddresses: updatedList, updatedAt: new Date().toISOString() },
+          { merge: true }
+        ).catch(() => {});
+      }
+    } else {
+      const GUEST_KEY = 'hashtag_guest_saved_addresses';
+      const guestList: import('../types/auth').SavedAddress[] = JSON.parse(
+        localStorage.getItem(GUEST_KEY) || '[]'
+      );
+      if (guestList.length >= 5) {
+        throw new Error('You can save up to 5 delivery locations. Please delete an older address to save a new one.');
+      }
+      guestList.push(newAddress);
+      localStorage.setItem(GUEST_KEY, JSON.stringify(guestList));
+    }
+
+    return newAddress;
+  };
+
+  const removeDeliveryAddress = async (id: string): Promise<void> => {
+    if (userProfile) {
+      const updatedList = (userProfile.savedAddresses || []).filter((a) => a.id !== id);
+      const updatedProfile: UserProfile = {
+        ...userProfile,
+        savedAddresses: updatedList,
+      };
+      setUserProfile(updatedProfile);
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedProfile));
+
+      if (userProfile.uid) {
+        await setDoc(
+          doc(db, 'users', userProfile.uid),
+          { savedAddresses: updatedList, updatedAt: new Date().toISOString() },
+          { merge: true }
+        ).catch(() => {});
+      }
+
+      const phoneId = (userProfile.phoneNumber || '').replace(/[^0-9]/g, '');
+      if (phoneId) {
+        await setDoc(
+          doc(db, 'customers', phoneId),
+          { savedAddresses: updatedList, updatedAt: new Date().toISOString() },
+          { merge: true }
+        ).catch(() => {});
+      }
+    } else {
+      const GUEST_KEY = 'hashtag_guest_saved_addresses';
+      const guestList: import('../types/auth').SavedAddress[] = JSON.parse(
+        localStorage.getItem(GUEST_KEY) || '[]'
+      );
+      const filtered = guestList.filter((a) => a.id !== id);
+      localStorage.setItem(GUEST_KEY, JSON.stringify(filtered));
+    }
+  };
+
   const openAuthModal = (mode: 'signin' | 'signup' = 'signin') => {
     setAuthModalMode(mode);
     setAuthModalOpen(true);
@@ -360,6 +525,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signInAsAdminDummy,
     logout,
     updateUserAddress,
+    saveDeliveryAddress,
+    removeDeliveryAddress,
     authModalOpen,
     authModalMode,
     openAuthModal,

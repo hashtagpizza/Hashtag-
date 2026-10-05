@@ -19,7 +19,7 @@ export interface MenuItem {
     | 'noodles-rice-rolls'
     | 'drinks-desserts'
     | 'combos';
-  highlightGroup: 'pizza' | 'burger' | 'momo' | 'cfc' | 'all';
+  highlightGroup?: 'pizza' | 'burger' | 'momo' | 'cfc' | 'all';
   dietary: 'veg' | 'non-veg';
   price: number;
   sizes?: MenuItemSize[];

@@ -57,6 +57,8 @@ import { LoyaltyReward } from './types/crm';
 import { useAuth } from './context/AuthContext';
 import { AuthModal } from './components/auth/AuthModal';
 import { UserMenu } from './components/auth/UserMenu';
+import { DeliveryLocationPicker } from './components/delivery/DeliveryLocationPicker';
+import { HashtagAiBot } from './components/chat/HashtagAiBot';
 
 interface CartItem {
   cartKey: string;
@@ -87,6 +89,10 @@ export default function App() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
+  const [deliveryFee, setDeliveryFee] = useState<number>(40);
+  const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number>(0.8);
+  const [deliveryLandmark, setDeliveryLandmark] = useState<string>('Adarshnagar (Near Ghantaghar)');
+  const [deliveryTier, setDeliveryTier] = useState<string>('Up to 1.0 km: Rs. 40');
   const [orderNotes, setOrderNotes] = useState('');
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -105,6 +111,26 @@ export default function App() {
   });
   const [isTableQrModalOpen, setIsTableQrModalOpen] = useState(false);
   const [isTableSelectorOpen, setIsTableSelectorOpen] = useState(false);
+
+  // Live Menu Items from Firestore CMS
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
+
+  useEffect(() => {
+    const unsub = crmService.subscribeToMenuItems((remoteItems) => {
+      if (remoteItems && remoteItems.length > 0) {
+        const remoteIds = new Set(remoteItems.map((r) => r.id));
+        const merged = [
+          ...remoteItems,
+          ...MENU_ITEMS.filter((i) => !remoteIds.has(i.id)),
+        ];
+        setMenuItems(merged);
+      }
+    });
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
 
   // Loyalty Rewards & Points state
   const [isLoyaltyPassOpen, setIsLoyaltyPassOpen] = useState(false);
@@ -270,15 +296,16 @@ export default function App() {
   }, [appliedLoyaltyReward]);
 
   const finalPayable = useMemo(() => {
-    return Math.max(0, cartSubtotal - loyaltyDiscount);
-  }, [cartSubtotal, loyaltyDiscount]);
+    const deliveryCost = serviceType === 'Delivery' ? deliveryFee : 0;
+    return Math.max(0, cartSubtotal - loyaltyDiscount + deliveryCost);
+  }, [cartSubtotal, loyaltyDiscount, serviceType, deliveryFee]);
 
   const pointsToEarn = useMemo(() => {
     return Math.floor(finalPayable / 10);
   }, [finalPayable]);
 
   const filteredMenuItems = useMemo(() => {
-    return MENU_ITEMS.filter((item) => {
+    return menuItems.filter((item) => {
       const matchesCategory =
         activeCategory === 'all' || item.category === activeCategory;
       const matchesDietary =
@@ -291,7 +318,7 @@ export default function App() {
         (item.tag && item.tag.toLowerCase().includes(q));
       return matchesCategory && matchesDietary && matchesSearch;
     });
-  }, [activeCategory, dietaryFilter, searchQuery]);
+  }, [menuItems, activeCategory, dietaryFilter, searchQuery]);
 
   const buildWhatsAppOrderUrl = () => {
     const isTableDineIn = serviceType === 'Dine In' && selectedTable;
@@ -304,7 +331,7 @@ export default function App() {
       customerPhone ? `Phone: ${customerPhone}` : null,
       isTableDineIn ? `Location: Table #${selectedTable} (Dine-in Sitting Area)` : null,
       serviceType === 'Delivery' && customerAddress
-        ? `Delivery Address: ${customerAddress}`
+        ? `Delivery Destination: ${customerAddress}\n• Landmark: ${deliveryLandmark}\n• Road Distance: ${deliveryDistanceKm} km (Birgunj Oneway Route)\n• Delivery Fee: Rs. ${deliveryFee}`
         : null,
       orderNotes ? `Note: ${orderNotes}` : null,
       appliedLoyaltyReward
@@ -325,7 +352,8 @@ export default function App() {
         ? `• 1x ${appliedLoyaltyReward.freeItemName} (FREE Loyalty Perk) — Rs. 0`
         : null,
       `--------------------------------`,
-      loyaltyDiscount > 0 ? `Subtotal: Rs. ${cartSubtotal}` : null,
+      `Cart Subtotal: Rs. ${cartSubtotal}`,
+      serviceType === 'Delivery' ? `Delivery Fee: +Rs. ${deliveryFee}` : null,
       loyaltyDiscount > 0 ? `Loyalty Discount: -Rs. ${loyaltyDiscount}` : null,
       `*Total Payable: Rs. ${finalPayable}*`,
       `⭐ Points to be Earned: +${pointsToEarn} pts (1 pt / Rs. 10)`,
@@ -346,8 +374,13 @@ export default function App() {
       setFormError('Please enter your name and phone number so we can confirm your order.');
       return;
     }
+    const phoneDigits = customerPhone.replace(/[^0-9]/g, '');
+    if (phoneDigits.length !== 10) {
+      setFormError('Please enter a valid 10-digit mobile number for delivery (e.g. 98XXXXXXXX)');
+      return;
+    }
     if (serviceType === 'Delivery' && !customerAddress.trim()) {
-      setFormError('Please provide your delivery landmark or address in Birgunj.');
+      setFormError('Please pin your delivery location or provide an address in Birgunj.');
       return;
     }
     setFormError(null);
@@ -370,7 +403,7 @@ export default function App() {
         tableNumber: serviceType === 'Dine In' && selectedTable ? selectedTable : undefined,
         deliveryAddress:
           serviceType === 'Delivery'
-            ? customerAddress.trim()
+            ? `${customerAddress.trim()} (Landmark: ${deliveryLandmark}, ${deliveryDistanceKm}km, Fee: Rs.${deliveryFee})`
             : serviceType === 'Dine In'
             ? selectedTable
               ? `Table #${selectedTable} - Dine In Area`
@@ -388,6 +421,9 @@ export default function App() {
         paymentMethod: 'Fonepay/QR',
         notes: [
           orderNotes.trim(),
+          serviceType === 'Delivery'
+            ? `[Delivery: Rs. ${deliveryFee}, ${deliveryDistanceKm} km, ${deliveryTier}]`
+            : '',
           appliedLoyaltyReward ? `[Loyalty Reward: ${appliedLoyaltyReward.title}]` : '',
         ]
           .filter(Boolean)
@@ -1195,7 +1231,7 @@ export default function App() {
         {/* Results Count & Reset */}
         <div className="flex items-center justify-between text-xs text-stone-500 mb-6">
           <div className="font-mono tabular-nums">
-            Showing {filteredMenuItems.length} of {MENU_ITEMS.length} dishes
+            Showing {filteredMenuItems.length} of {menuItems.length} dishes
             {activeCategory !== 'all' &&
               ` · ${
                 MENU_CATEGORIES.find((c) => c.id === activeCategory)?.name
@@ -1544,9 +1580,9 @@ export default function App() {
               </div>
             </div>
 
-            {/* Map Embed (6 Cols) */}
-            <div className="lg:col-span-6">
-              <div className="rounded-2xl overflow-hidden border border-stone-800 bg-stone-900 h-[320px] relative">
+            {/* Map Embed & Official Delivery Rates (6 Cols) */}
+            <div className="lg:col-span-6 space-y-4">
+              <div className="rounded-2xl overflow-hidden border border-stone-800 bg-stone-900 h-[260px] relative shadow-lg">
                 <iframe
                   title="Hashtag Pizza Birgunj Location — RB Complex, Adarshnagar"
                   src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3554.4984166249534!2d84.87895057530663!3d27.01444105574519!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3993546743903f6f%3A0xc3e65842813589b9!2sAdarsh%20Nagar%20Birgunj!5e0!3m2!1sen!2snp!4v1714574500000!5m2!1sen!2snp"
@@ -1554,6 +1590,42 @@ export default function App() {
                   loading="lazy"
                   referrerPolicy="no-referrer-when-cross-origin"
                 />
+              </div>
+
+              {/* Official Delivery Rates Card */}
+              <div className="p-4 rounded-2xl bg-stone-900 border border-stone-800 text-stone-300">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#FFD700] flex items-center gap-1.5">
+                    <span>🛵 Birgunj Official Delivery Rates</span>
+                  </span>
+                  <span className="text-[10px] text-stone-400">One-way traffic compliant</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="p-2 rounded-lg bg-stone-950/60 border border-stone-800">
+                    <p className="font-bold text-white">Up to 1.0 km: Rs. 40</p>
+                    <p className="text-[10px] text-stone-400">Adarshnagar, Ghantaghar, Maisthan</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-stone-950/60 border border-stone-800">
+                    <p className="font-bold text-white">1.0 – 2.0 km: Rs. 50</p>
+                    <p className="text-[10px] text-stone-400">Ranighat, Panitanki, Murli</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-stone-950/60 border border-stone-800">
+                    <p className="font-bold text-white">2.0 – 3.0 km: Rs. 60</p>
+                    <p className="text-[10px] text-stone-400">Shreepur, Vishwa</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-stone-950/60 border border-stone-800">
+                    <p className="font-bold text-white">3.0 – 4.0 km: Rs. 70</p>
+                    <p className="text-[10px] text-stone-400">Pipra, Powerhouse / Bypass</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-stone-950/60 border border-stone-800">
+                    <p className="font-bold text-white">4.0 – 5.0 km: Rs. 80</p>
+                    <p className="text-[10px] text-stone-400">Birgunj Customs / Inarwa, Gandak</p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-stone-950/60 border border-stone-800">
+                    <p className="font-bold text-white">&gt; 5.0 km: Rs. 80 + Rs. 15/km</p>
+                    <p className="text-[10px] text-stone-400">Save up to 5 locations in checkout</p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1838,16 +1910,17 @@ export default function App() {
                     </div>
 
                     {serviceType === 'Delivery' && (
-                      <div>
-                        <label className="block text-xs font-medium text-stone-700 mb-1">
-                          Delivery Location in Birgunj *
-                        </label>
-                        <input
-                          type="text"
-                          value={customerAddress}
-                          onChange={(e) => setCustomerAddress(e.target.value)}
-                          placeholder="e.g. Adarshnagar, near Ghantaghar / Link Road"
-                          className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-sm focus:outline-none focus:border-[#0047AB]"
+                      <div className="pt-1">
+                        <DeliveryLocationPicker
+                          initialAddress={customerAddress}
+                          currentFee={deliveryFee}
+                          onLocationSelected={(loc) => {
+                            setCustomerAddress(loc.address);
+                            setDeliveryLandmark(loc.landmark);
+                            setDeliveryFee(loc.deliveryFee);
+                            setDeliveryDistanceKm(loc.distanceKm);
+                            setDeliveryTier(loc.tierDescription);
+                          }}
                         />
                       </div>
                     )}
@@ -1915,19 +1988,32 @@ export default function App() {
                     </button>
                   )}
 
-                  {/* Subtotal & Discount Breakdown */}
-                  {loyaltyDiscount > 0 && (
-                    <div className="space-y-1 text-xs text-stone-600 pt-1 border-t border-stone-200">
-                      <div className="flex items-center justify-between">
-                        <span>Cart Subtotal</span>
-                        <span className="font-mono">Rs. {cartSubtotal}</span>
+                  {/* Subtotal, Delivery Fee & Discount Breakdown */}
+                  <div className="space-y-1.5 text-xs text-stone-600 pt-1 border-t border-stone-200">
+                    <div className="flex items-center justify-between">
+                      <span>Items Subtotal</span>
+                      <span className="font-mono">Rs. {cartSubtotal}</span>
+                    </div>
+
+                    {serviceType === 'Delivery' && (
+                      <div className="flex items-center justify-between text-stone-900 bg-amber-50/80 p-2 rounded-lg border border-amber-200">
+                        <div>
+                          <span className="font-bold">Birgunj Delivery Fee</span>
+                          <p className="text-[10px] text-stone-500">
+                            {deliveryDistanceKm} km · Oneway loop route ({deliveryTier.split(' (')[0]})
+                          </p>
+                        </div>
+                        <span className="font-mono font-bold text-[#E31B23]">+Rs. {deliveryFee}</span>
                       </div>
+                    )}
+
+                    {loyaltyDiscount > 0 && (
                       <div className="flex items-center justify-between font-bold text-emerald-600">
                         <span>Loyalty Points Discount</span>
                         <span className="font-mono">-Rs. {loyaltyDiscount}</span>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   <div className="flex items-center justify-between text-base font-bold text-stone-900 pt-1">
                     <div>
@@ -2009,6 +2095,9 @@ export default function App() {
 
       {/* PWA Offline Network Status Indicator & Phone Ordering Fallback */}
       <OfflineIndicator />
+
+      {/* Gemini Powered Hashtag Pizza AI Bot */}
+      <HashtagAiBot />
     </div>
   );
 }

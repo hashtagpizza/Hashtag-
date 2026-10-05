@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Search,
   Plus,
@@ -37,6 +37,7 @@ interface PosTerminalProps {
 }
 
 export const PosTerminal: React.FC<PosTerminalProps> = ({ onOrderPlaced, customers }) => {
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [cartLines, setCartLines] = useState<CartLine[]>([]);
@@ -56,6 +57,24 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({ onOrderPlaced, custome
   // Size Picker Modal state
   const [sizePickerItem, setSizePickerItem] = useState<MenuItem | null>(null);
 
+  // Subscribe to live menu items from Firestore CMS
+  useEffect(() => {
+    const unsub = crmService.subscribeToMenuItems((remoteItems) => {
+      if (remoteItems && remoteItems.length > 0) {
+        const remoteIds = new Set(remoteItems.map((r) => r.id));
+        const merged = [
+          ...remoteItems,
+          ...MENU_ITEMS.filter((i) => !remoteIds.has(i.id)),
+        ];
+        setMenuItems(merged);
+      }
+    });
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
+
   // Customer match lookup
   const matchedCustomer = useMemo(() => {
     if (!customerPhone || customerPhone.length < 4) return null;
@@ -71,7 +90,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({ onOrderPlaced, custome
 
   // Filter menu items
   const filteredItems = useMemo(() => {
-    return MENU_ITEMS.filter((item) => {
+    return menuItems.filter((item) => {
       const matchCat =
         activeCategory === 'all' ||
         (activeCategory === 'pizza' && item.category.startsWith('pizza')) ||
@@ -84,7 +103,7 @@ export const PosTerminal: React.FC<PosTerminalProps> = ({ onOrderPlaced, custome
         item.description.toLowerCase().includes(searchQuery.toLowerCase());
       return matchCat && matchSearch;
     });
-  }, [activeCategory, searchQuery]);
+  }, [menuItems, activeCategory, searchQuery]);
 
   // Add item to cart
   const handleAddItem = (item: MenuItem, size?: MenuItemSize) => {
