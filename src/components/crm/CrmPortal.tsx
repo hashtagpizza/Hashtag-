@@ -49,9 +49,11 @@ import {
   Store,
   ArrowLeft,
   BookOpen,
+  Mail,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { crmService } from '../../services/crmService';
+import { gmailService } from '../../services/gmailService';
 import { PosTerminal } from '../admin/PosTerminal';
 import { KotDisplay } from '../admin/KotDisplay';
 import { MenuCms } from '../admin/MenuCms';
@@ -152,6 +154,7 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
   const [showTableQrModal, setShowTableQrModal] = useState(false);
   const [loyaltyModalCustomer, setLoyaltyModalCustomer] = useState<Customer | null>(null);
   const [redemptions, setRedemptions] = useState<LoyaltyRedemption[]>([]);
+  const [gmailStatusNotice, setGmailStatusNotice] = useState<string | null>(null);
 
   // Audio & Visual Alert state
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
@@ -578,7 +581,7 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
       badge: `${customers.length}`,
     },
     { id: 'users' as TabType, label: 'Users & Staff', icon: ShieldCheck },
-    { id: 'tables' as TabType, label: 'Table QR Stands', icon: QrCode, badge: '8' },
+    { id: 'tables' as TabType, label: 'Table QR Stands', icon: QrCode, badge: '10' },
     { id: 'analytics' as TabType, label: 'Store Sales', icon: TrendingUp },
   ];
 
@@ -819,7 +822,7 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
                 <div>
                   <h2 className="text-xl font-black text-white">Table QR Stands & Dine-In Management</h2>
                   <p className="text-xs text-slate-400 mt-1">
-                    Hashtag Pizza Birgunj features 8 dedicated dining booths. Monitor occupancy and generate stands.
+                    Hashtag Pizza Birgunj features 10 dedicated dining tables. Monitor occupancy and generate stands.
                   </p>
                 </div>
                 <button
@@ -827,12 +830,12 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
                   className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-md cursor-pointer self-start sm:self-auto"
                 >
                   <QrCode className="w-4 h-4" />
-                  <span>Open Printable Table Stands (8)</span>
+                  <span>Open Printable Table Stands (10)</span>
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((tableNum) => {
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((tableNum) => {
                   const activeTableOrder = orders.find(
                     (o) =>
                       o.tableNumber === tableNum &&
@@ -1882,8 +1885,8 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-black text-white">Marketing & WhatsApp Broadcasts</h3>
-                <p className="text-xs text-slate-400">Send personalized discounts and weekend promo alerts to Birgunj patrons.</p>
+                <h3 className="text-xl font-black text-white">Marketing, Email & WhatsApp Broadcasts</h3>
+                <p className="text-xs text-slate-400">Send personalized discounts and weekend promo alerts to Birgunj patrons via Gmail or WhatsApp.</p>
               </div>
               <button
                 onClick={() => setShowNewCampaignModal(true)}
@@ -1893,6 +1896,18 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
                 <span>Create Campaign</span>
               </button>
             </div>
+
+            {gmailStatusNotice && (
+              <div className="p-3 bg-blue-900/40 border border-blue-600/50 rounded-xl text-xs text-blue-200 flex items-center justify-between">
+                <span>{gmailStatusNotice}</span>
+                <button
+                  onClick={() => setGmailStatusNotice(null)}
+                  className="text-slate-400 hover:text-white text-xs font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {campaigns.map((camp) => (
@@ -1925,20 +1940,42 @@ export const CrmPortal: React.FC<CrmPortalProps> = ({ isOpen, onClose }) => {
                     )}
                   </div>
 
-                  <div className="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
+                  <div className="mt-4 pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-[11px] text-slate-500">
                       Created: {new Date(camp.createdAt).toLocaleDateString()}
                     </span>
-                    <button
-                      onClick={() => {
-                        const targetCust = customers[0]?.phone || '9861370721';
-                        openWhatsApp(targetCust, camp.message);
-                      }}
-                      className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                      <span>Test WhatsApp Blast</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={async () => {
+                          const targetEmail = customers.find((c) => c.email)?.email || 'hashtagpizzainfo@gmail.com';
+                          const res = await gmailService.sendEmail({
+                            to: targetEmail,
+                            subject: `[Hashtag Pizza Special] ${camp.title}`,
+                            bodyText: `${camp.message}\n\nCoupon Code: ${camp.discountCode || 'PIZZA10'}\n\nHashtag Pizza, RB Complex, Adarshnagar, Birgunj\nHotline: 9861370721`,
+                          });
+                          if (res.success) {
+                            setGmailStatusNotice(`Promo email successfully sent via Gmail to ${targetEmail}!`);
+                          } else {
+                            setGmailStatusNotice(`Gmail note: ${res.error || 'Please connect Google Account for Gmail access.'}`);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                        title="Send campaign announcement via Gmail"
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>Send via Gmail</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          const targetCust = customers[0]?.phone || '9861370721';
+                          openWhatsApp(targetCust, camp.message);
+                        }}
+                        className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>WhatsApp Blast</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}

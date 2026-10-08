@@ -38,6 +38,20 @@
         } catch (e) {
           console.warn('Fetch setter patch error:', e);
         }
+
+        // Suppress benign iframe WebSocket closing warnings from dev preview environment
+        window.addEventListener('error', function(event) {
+          if (event && event.message && event.message.includes('WebSocket')) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function(event) {
+          if (event && event.reason && String(event.reason).includes('WebSocket')) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        });
       })();
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -127,7 +141,7 @@
                 "Saturday",
                 "Sunday"
               ],
-              "opens": "12:00",
+              "opens": "11:30",
               "closes": "21:30"
             }
           ],

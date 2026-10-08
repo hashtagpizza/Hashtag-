@@ -20,7 +20,7 @@ interface TableQrModalProps {
   onSelectTable?: (tableNum: number) => void;
 }
 
-export const TOTAL_TABLES = 8;
+export const TOTAL_TABLES = 10;
 
 export const TableQrModal: React.FC<TableQrModalProps> = ({
   isOpen,
@@ -31,7 +31,7 @@ export const TableQrModal: React.FC<TableQrModalProps> = ({
   const [qrCodeUrls, setQrCodeUrls] = useState<Record<number, string>>({});
   const [copiedTable, setCopiedTable] = useState<number | null>(null);
 
-  // Generate QR Codes for Tables 1 through 8
+  // Generate QR Codes for Tables 1 through 10
   useEffect(() => {
     if (!isOpen) return;
 
@@ -107,11 +107,11 @@ export const TableQrModal: React.FC<TableQrModalProps> = ({
                   Table-Side QR Code Ordering
                 </h2>
                 <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border border-emerald-500/30">
-                  8 Tables Ready
+                  10 Tables Ready
                 </span>
               </div>
               <p className="text-xs text-stone-400">
-                Print acrylic stand cards for Tables 1 to 8. Customers scan with their phone camera to order directly to your kitchen!
+                Print acrylic stand cards for Tables 1 to 10. Customers scan with their phone camera to order directly to your kitchen!
               </p>
             </div>
           </div>
@@ -149,7 +149,7 @@ export const TableQrModal: React.FC<TableQrModalProps> = ({
                   : 'bg-white text-stone-700 hover:bg-stone-200 border border-stone-300'
               }`}
             >
-              All 8 Tables
+              All 10 Tables
             </button>
             {Array.from({ length: TOTAL_TABLES }, (_, i) => i + 1).map((num) => (
               <button
@@ -290,7 +290,7 @@ export const TableQrModal: React.FC<TableQrModalProps> = ({
           <div className="flex items-center gap-2 text-stone-300">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span>
-              Direct Table Dine-In is active across all 8 tables at RB Complex, Birgunj.
+              Direct Table Dine-In is active across all 10 tables at RB Complex, Birgunj.
             </span>
           </div>
 
@@ -301,7 +301,7 @@ export const TableQrModal: React.FC<TableQrModalProps> = ({
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-400 text-stone-900 font-bold hover:bg-amber-300 transition-colors cursor-pointer"
             >
               <Printer className="w-4 h-4" />
-              <span>Print All 8 Stands</span>
+              <span>Print All 10 Stands</span>
             </button>
             <button
               onClick={onClose}

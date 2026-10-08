@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   QrCode,
   ArrowRight,
+  Package,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -16,12 +17,16 @@ interface UserMenuProps {
   onOpenCrm: () => void;
   onOpenTableQr: () => void;
   onOpenLoyalty: () => void;
+  onOpenProfile?: () => void;
+  onOpenMyOrders?: () => void;
 }
 
 export const UserMenu: React.FC<UserMenuProps> = ({
   onOpenCrm,
   onOpenTableQr,
   onOpenLoyalty,
+  onOpenProfile,
+  onOpenMyOrders,
 }) => {
   const { user, loading, isAdmin, isStaff, logout, openAuthModal } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
@@ -188,6 +193,21 @@ export const UserMenu: React.FC<UserMenuProps> = ({
               </>
             )}
 
+            {/* Customer Past Orders */}
+            {onOpenMyOrders && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  onOpenMyOrders();
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-amber-50/70 hover:bg-amber-100/80 text-amber-950 text-xs font-bold transition-colors text-left cursor-pointer border border-amber-200/80"
+              >
+                <Package className="w-4 h-4 text-amber-700" />
+                <span>My Orders</span>
+              </button>
+            )}
+
             {/* Customer VIP Pass */}
             <button
               type="button"
@@ -200,6 +220,21 @@ export const UserMenu: React.FC<UserMenuProps> = ({
               <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
               <span>My VIP Points & Rewards</span>
             </button>
+
+            {/* Account Details & Saved Addresses */}
+            {onOpenProfile && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  onOpenProfile();
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-stone-100 text-stone-700 text-xs font-semibold transition-colors text-left cursor-pointer"
+              >
+                <UserIcon className="w-4 h-4 text-stone-500" />
+                <span>Account Profile & Addresses</span>
+              </button>
+            )}
           </div>
 
           {/* Sign Out */}

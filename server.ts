@@ -13,7 +13,14 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = parseInt(process.env.PORT || '3000', 10);
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+
+// Security Headers Middleware
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 
 // Initialize GoogleGenAI SDK with required telemetry header
 const ai = new GoogleGenAI({
@@ -32,7 +39,7 @@ Slogan: "Think Food, Think Hashtag Pizza".
 ABOUT HASHTAG PIZZA BIRGUNJ:
 - Location: Shop No. 01, Ground Floor, RB Complex, Loharpatti, Adarshnagar, Birgunj, Nepal.
 - Phone / WhatsApp: 9861370721 / Landline: 051-591718.
-- Opening Hours: 12:00 PM – 09:30 PM Daily.
+- Opening Hours: 11:30 AM – 9:30 PM Daily.
 - Speciality: Hand-stretched artisan dough pizzas baked in a commercial 24-inch conveyor oven, Kurkure Momos, Crispy Fried Chicken (CFC), Gourmet Burgers, Milkshakes, Lava Cakes.
 
 OFFICIAL BIRGUNJ DELIVERY RATES:
@@ -41,7 +48,7 @@ OFFICIAL BIRGUNJ DELIVERY RATES:
 - 2.0 km to 3.0 km: Rs. 60 (e.g. Shreepur, Vishwa)
 - 3.0 km to 4.0 km: Rs. 70 (e.g. Pipra, Powerhouse / Bypass)
 - 4.0 km to 5.0 km: Rs. 80 (e.g. Birgunj Customs / Inarwa, Gandak / National Medical College)
-- Beyond 5.0 km: Rs. 80 base + Rs. 15 per extra km.
+- Beyond 5.0 km: Delivery NOT available. We only deliver up to 5 km within Birgunj itself (no delivery beyond Birgunj). Customers beyond 5 km should choose Take Away or Dine In.
 - Important: Deliveries strictly obey Birgunj One-Way traffic rules (e.g. Ghantaghar clockwise loop) to ensure realistic ETA and hot doorstep delivery. Customers can pin their location and save up to 5 addresses. Phone numbers must be 10 digits.
 
 TOP MENU PICKS:
@@ -59,9 +66,11 @@ When answering queries regarding location, distance, nearby landmarks, or geogra
 app.post('/api/chat', async (req: Request, res: Response) => {
   const { message, history = [], complexity = 'general', location } = req.body;
 
-  if (!message || typeof message !== 'string') {
+  if (!message || typeof message !== 'string' || message.trim().length === 0) {
     return res.status(400).json({ error: 'Message is required.' });
   }
+
+  const cleanMessage = message.trim().slice(0, 1500);
 
   // Model Selection according to guidelines:
   // - gemini-3.1-pro-preview for particularly complex tasks
@@ -81,11 +90,11 @@ app.post('/api/chat', async (req: Request, res: Response) => {
   // Build multi-turn contents array preserving full conversation history
   const contents: any[] = [];
   if (Array.isArray(history)) {
-    for (const turn of history) {
-      if (turn.role && turn.text) {
+    for (const turn of history.slice(-10)) {
+      if (turn.role && turn.text && typeof turn.text === 'string') {
         contents.push({
           role: turn.role === 'user' ? 'user' : 'model',
-          parts: [{ text: turn.text }],
+          parts: [{ text: turn.text.slice(0, 1500) }],
         });
       }
     }
@@ -93,7 +102,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
   // Append current user message
   contents.push({
     role: 'user',
-    parts: [{ text: message }],
+    parts: [{ text: cleanMessage }],
   });
 
   // Coordinates for Birgunj (or customer pinned location)
@@ -152,7 +161,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
     let fallbackText = `Namaste! I am Hashtag Pizza AI Bot. We serve fresh artisan pizzas, crispy Kurkure Momos, and CFC fried chicken at RB Complex, Adarshnagar, Birgunj.`;
 
     if (lower.includes('rate') || lower.includes('delivery') || lower.includes('cost') || lower.includes('charge')) {
-      fallbackText = `🛵 **Hashtag Pizza Birgunj Official Delivery Rates:**\n\n- **Up to 1.0 km:** Rs. 40 (Adarshnagar, Ghantaghar, Maisthan)\n- **1.0 km – 2.0 km:** Rs. 50 (Ranighat, Panitanki, Murli)\n- **2.0 km – 3.0 km:** Rs. 60 (Shreepur, Vishwa)\n- **3.0 km – 4.0 km:** Rs. 70 (Pipra, Powerhouse / Bypass)\n- **4.0 km – 5.0 km:** Rs. 80 (Birgunj Customs / Inarwa, Gandak / NMC)\n- **Beyond 5.0 km:** Rs. 80 + Rs. 15 per extra km.\n\n🚦 Our routes follow Birgunj One-Way traffic rules (Ghantaghar loop) to ensure hot delivery! You can save up to 5 delivery locations in checkout.`;
+      fallbackText = `🛵 **Hashtag Pizza Birgunj Official Delivery Rates:**\n\n- **Up to 1.0 km:** Rs. 40 (Adarshnagar, Ghantaghar, Maisthan)\n- **1.0 km – 2.0 km:** Rs. 50 (Ranighat, Panitanki, Murli)\n- **2.0 km – 3.0 km:** Rs. 60 (Shreepur, Vishwa)\n- **3.0 km – 4.0 km:** Rs. 70 (Pipra, Powerhouse / Bypass)\n- **4.0 km – 5.0 km:** Rs. 80 (Birgunj Customs / Inarwa, Gandak / NMC)\n- **Beyond 5.0 km:** Delivery is not available (we deliver strictly up to 5 km within Birgunj). Customers beyond 5 km should choose Take Away or Dine In.\n\n🚦 Our routes follow Birgunj One-Way traffic rules (Ghantaghar loop) to ensure hot delivery! You can save up to 5 delivery locations in checkout.`;
     } else if (lower.includes('pizza') || lower.includes('recommend') || lower.includes('menu')) {
       fallbackText = `🍕 **Top Recommendations at Hashtag Pizza:**\n\n1. **Hashtag Special Chicken Pizza** (succulent chicken, bell peppers, mozzarella)\n2. **Paneer Overloaded Pizza** (fresh paneer cubes, capsicum, rich cheese)\n3. **Classic Margherita** (San Marzano tomato base, pure mozzarella)\n\nAvailable in Personal 7", Medium 9", and Large 12"!`;
     } else if (lower.includes('where') || lower.includes('location') || lower.includes('address') || lower.includes('phone')) {
@@ -177,7 +186,10 @@ async function startServer() {
 
   if (!isProd) {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

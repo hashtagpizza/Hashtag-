@@ -38,7 +38,6 @@ export interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signUpWithEmail: (email: string, pass: string, name?: string, phone?: string) => Promise<void>;
   signInAsGuest: (name?: string) => Promise<void>;
-  signInAsAdminDummy: () => Promise<void>;
   logout: () => Promise<void>;
   updateUserAddress: (address: string) => Promise<void>;
   saveDeliveryAddress: (addr: Omit<SavedAddress, 'id'>) => Promise<SavedAddress>;

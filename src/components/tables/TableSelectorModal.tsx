@@ -38,7 +38,7 @@ export const TableSelectorModal: React.FC<TableSelectorModalProps> = ({
               Select Your Table Number
             </h3>
             <p className="text-xs text-stone-500">
-              Dine-In Sitting Area at RB Complex (Tables 1 – 8)
+              Dine-In Sitting Area at RB Complex (Tables 1 – 10)
             </p>
           </div>
         </div>
@@ -47,7 +47,7 @@ export const TableSelectorModal: React.FC<TableSelectorModalProps> = ({
           Choose the table number displayed on the acrylic QR stand on your table. Your orders will be brought straight to you!
         </p>
 
-        <div className="grid grid-cols-4 gap-2.5 mb-5">
+        <div className="grid grid-cols-5 gap-2 mb-5">
           {Array.from({ length: TOTAL_TABLES }, (_, i) => i + 1).map((num) => {
             const isSelected = currentTable === num;
             return (

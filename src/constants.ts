@@ -93,7 +93,7 @@ export const CONTACT_INFO = {
   instagram: 'https://instagram.com/hashtagpizza.np',
   instagramHandle: '@hashtagpizza.np',
   facebook: 'https://www.facebook.com/HashtagPizzaa/',
-  hours: '12:00 PM – 09:30 PM Daily',
+  hours: '11:30 AM – 9:30 PM Daily',
   takeAppUrl: 'https://take.app/hashtagpizza',
   services: ['Dine In', 'Take Away', 'Delivery'],
 };
@@ -1806,5 +1806,131 @@ export const TESTIMONIALS = [
     date: 'Google Review',
     rating: '4.9 / 5.0',
     text: 'Ordered the Non-Veg Triple Combo and Chicken Zinger Cheese Burgers for an office team lunch. Delivered piping hot in 30 minutes with real mozzarella that stays stretchy.',
+  },
+];
+
+// Pizza Size Add-Ons (Rates per size S / M / L)
+export interface PizzaAddonOption {
+  id: string;
+  name: string;
+  category: 'pizza-addon';
+  description: string;
+  prices: {
+    S: number;
+    M: number;
+    L: number;
+  };
+}
+
+export const PIZZA_SIZE_ADDONS: PizzaAddonOption[] = [
+  {
+    id: 'addon-cheese-burst',
+    name: 'Cheese Burst',
+    category: 'pizza-addon',
+    description: 'Crust packed with molten melted cheese',
+    prices: { S: 120, M: 200, L: 300 },
+  },
+  {
+    id: 'addon-extra-cheese',
+    name: 'Extra Cheese',
+    category: 'pizza-addon',
+    description: 'Extra layer of 100% real mozzarella & cheddar',
+    prices: { S: 80, M: 140, L: 200 },
+  },
+  {
+    id: 'addon-veg-topping',
+    name: 'Veg Topping',
+    category: 'pizza-addon',
+    description: 'Fresh crisp capsicum, sweet corn, mushrooms & onions',
+    prices: { S: 40, M: 60, L: 80 },
+  },
+  {
+    id: 'addon-chicken-topping',
+    name: 'Chicken Topping',
+    category: 'pizza-addon',
+    description: 'Juicy spiced herb-roasted chicken chunks',
+    prices: { S: 60, M: 80, L: 100 },
+  },
+];
+
+// Dips (Rs. 40 each)
+export interface DipAddonOption {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+}
+
+export const DIPS_ADDONS: DipAddonOption[] = [
+  {
+    id: 'dip-cheesy',
+    name: 'Cheesy Dip',
+    price: 40,
+    description: 'Creamy melted cheese dipping sauce',
+  },
+  {
+    id: 'dip-mayo',
+    name: 'Mayo Dip',
+    price: 40,
+    description: 'Rich velvety garlic mayo dip',
+  },
+  {
+    id: 'dip-harisha',
+    name: 'Harisha Dip',
+    price: 40,
+    description: 'Zesty spiced Moroccan chilli harissa dip',
+  },
+  {
+    id: 'dip-mint-mayo',
+    name: 'Mint Mayo Dip',
+    price: 40,
+    description: 'Refreshing fresh mint & herb mayo dip',
+  },
+];
+
+// Beverages (Bottles only - No Can)
+export interface BeverageAddonOption {
+  id: string;
+  name: string;
+  price: number;
+  volume: string;
+  description: string;
+}
+
+export const BEVERAGE_ADDONS: BeverageAddonOption[] = [
+  {
+    id: 'bev-coke-250',
+    name: 'Coke (250 ml Bottle)',
+    price: 60,
+    volume: '250 ml',
+    description: 'Chilled bottle · No can only bottle',
+  },
+  {
+    id: 'bev-sprite-250',
+    name: 'Sprite (250 ml Bottle)',
+    price: 60,
+    volume: '250 ml',
+    description: 'Chilled lemon-lime bottle · No can only bottle',
+  },
+  {
+    id: 'bev-fanta-250',
+    name: 'Fanta (250 ml Bottle)',
+    price: 60,
+    volume: '250 ml',
+    description: 'Chilled sparkling orange bottle · No can only bottle',
+  },
+  {
+    id: 'bev-coke-750',
+    name: 'Coke (750 ml Bottle)',
+    price: 120,
+    volume: '750 ml',
+    description: 'Large sharing chilled bottle',
+  },
+  {
+    id: 'bev-sprite-750',
+    name: 'Sprite (750 ml Bottle)',
+    price: 120,
+    volume: '750 ml',
+    description: 'Large sharing chilled bottle',
   },
 ];

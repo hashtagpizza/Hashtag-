@@ -75,6 +75,16 @@
           "description": "Customer contact phone",
           "maxLength": 20
         },
+        "userId": {
+          "type": "string",
+          "description": "Auth UID of the customer account",
+          "maxLength": 128
+        },
+        "customerEmail": {
+          "type": "string",
+          "description": "Email address of the customer",
+          "maxLength": 100
+        },
         "orderType": {
           "type": "string",
           "enum": ["dine-in", "takeaway", "delivery"],

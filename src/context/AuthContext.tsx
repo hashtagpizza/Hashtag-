@@ -7,6 +7,8 @@ import {
   signInAnonymously,
   updateProfile,
   User,
+  GoogleAuthProvider,
+  signInWithPopup,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -15,11 +17,6 @@ import { UserProfile, UserRole, AuthContextType } from '../types/auth';
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const ADMIN_EMAIL = 'hashtagpizzainfo@gmail.com';
-
-export const DUMMY_ADMIN_CREDENTIALS = {
-  email: 'admin@hashtagpizza.com',
-  password: 'admin123',
-};
 
 const AUTH_STORAGE_KEY = 'hashtag_auth_profile';
 
@@ -122,15 +119,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(fallback));
         }
       } else {
-        // If there is a verified saved session (such as the admin dummy session), preserve it
+        // For unauthenticated users, only preserve anonymous guest sessions
         try {
-          const saved = localStorage.getItem(AUTH_STORAGE_KEY);
-          if (saved) {
-            setUserProfile(JSON.parse(saved));
+          const savedStr = localStorage.getItem(AUTH_STORAGE_KEY);
+          if (savedStr) {
+            const saved = JSON.parse(savedStr);
+            if (saved?.isAnonymous && saved?.role === 'customer') {
+              setUserProfile(saved);
+            } else {
+              localStorage.removeItem(AUTH_STORAGE_KEY);
+              setUserProfile(null);
+            }
           } else {
             setUserProfile(null);
           }
         } catch {
+          localStorage.removeItem(AUTH_STORAGE_KEY);
           setUserProfile(null);
         }
       }
@@ -143,46 +147,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInWithEmail = async (email: string, pass: string) => {
     setLoading(true);
     const cleanEmail = email.trim();
-    const isDummyAdmin =
-      (cleanEmail.toLowerCase() === DUMMY_ADMIN_CREDENTIALS.email.toLowerCase() ||
-        cleanEmail.toLowerCase() === ADMIN_EMAIL.toLowerCase()) &&
-      (pass === DUMMY_ADMIN_CREDENTIALS.password || pass === 'admin123' || pass === 'admin');
 
     try {
-      if (isDummyAdmin) {
-        // Ensure Firebase Auth session is active in background
-        if (!auth.currentUser) {
-          await signInAnonymously(auth).catch(() => {});
-        }
-
-        // Resolve admin authentication directly without triggering auth/admin-restricted-operation
-        const adminProfile: UserProfile = {
-          uid: 'admin_hashtag_official',
-          email: cleanEmail,
-          displayName: 'Hashtag Admin (Owner)',
-          phoneNumber: '9861370721',
-          role: 'admin',
-          loyaltyPoints: 9999,
-          tier: 'VIP',
-          address: 'RB Complex, Adarshnagar, Birgunj',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(adminProfile));
-        setUserProfile(adminProfile);
-        setAuthModalOpen(false);
-
-        // Asynchronous background sync to Firestore
-        setDoc(doc(db, 'users', 'admin_hashtag_official'), adminProfile, { merge: true }).catch(() => {});
-        setDoc(doc(db, 'admins', 'admin_hashtag_official'), {
-          uid: 'admin_hashtag_official',
-          email: cleanEmail,
-          updatedAt: new Date().toISOString(),
-        }, { merge: true }).catch(() => {});
-        return;
-      }
-
       try {
         await signInWithEmailAndPassword(auth, cleanEmail, pass);
         setAuthModalOpen(false);
@@ -225,47 +191,83 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw authErr;
         }
       }
-    } catch (err: any) {
-      if (isDummyAdmin) {
-        await signInAsAdminDummy();
-      } else {
-        throw err;
-      }
     } finally {
       setLoading(false);
     }
   };
 
-  const signInAsAdminDummy = async () => {
+  const signInWithGoogle = async () => {
     setLoading(true);
     try {
-      if (!auth.currentUser) {
-        await signInAnonymously(auth).catch(() => {});
+      const provider = new GoogleAuthProvider();
+      provider.addScope('https://mail.google.com/');
+      provider.addScope('email');
+      provider.addScope('profile');
+      const res = await signInWithPopup(auth, provider);
+      const curr = res.user;
+
+      const credential = GoogleAuthProvider.credentialFromResult(res);
+      const accessToken = credential?.accessToken;
+      if (accessToken) {
+        localStorage.setItem('google_workspace_access_token', accessToken);
       }
-      const email = DUMMY_ADMIN_CREDENTIALS.email;
-      const adminProfile: UserProfile = {
-        uid: 'admin_hashtag_official',
-        email,
-        displayName: 'Hashtag Admin (Owner)',
-        phoneNumber: '9861370721',
-        role: 'admin',
-        loyaltyPoints: 9999,
-        tier: 'VIP',
-        address: 'RB Complex, Adarshnagar, Birgunj',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
 
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(adminProfile));
-      setUserProfile(adminProfile);
+      const userDocRef = doc(db, 'users', curr.uid);
+      const snap = await getDoc(userDocRef);
+      const isOwner = curr.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+      let profile: UserProfile;
+      if (snap.exists()) {
+        const data = snap.data();
+        profile = {
+          uid: curr.uid,
+          email: curr.email || data.email,
+          displayName: curr.displayName || data.displayName || 'Google Customer',
+          phoneNumber: curr.phoneNumber || data.phoneNumber || null,
+          photoURL: curr.photoURL || data.photoURL || null,
+          role: isOwner ? 'admin' : (data.role || 'customer'),
+          loyaltyPoints: typeof data.loyaltyPoints === 'number' ? data.loyaltyPoints : 100,
+          tier: data.tier || 'Bronze',
+          address: data.address || '',
+          savedAddresses: Array.isArray(data.savedAddresses) ? data.savedAddresses : [],
+          isAnonymous: false,
+          createdAt: data.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await updateDoc(userDocRef, {
+          displayName: profile.displayName,
+          email: profile.email,
+          photoURL: profile.photoURL,
+          updatedAt: new Date().toISOString(),
+        }).catch(() => {});
+      } else {
+        profile = {
+          uid: curr.uid,
+          email: curr.email || null,
+          displayName: curr.displayName || 'Google Customer',
+          phoneNumber: curr.phoneNumber || null,
+          photoURL: curr.photoURL || null,
+          role: isOwner ? 'admin' : 'customer',
+          loyaltyPoints: 100,
+          tier: 'Bronze',
+          address: '',
+          savedAddresses: [],
+          isAnonymous: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await setDoc(userDocRef, profile, { merge: true }).catch(() => {});
+      }
+
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(profile));
+      setUserProfile(profile);
       setAuthModalOpen(false);
-
-      setDoc(doc(db, 'users', 'admin_hashtag_official'), adminProfile, { merge: true }).catch(() => {});
-      setDoc(doc(db, 'admins', 'admin_hashtag_official'), {
-        uid: 'admin_hashtag_official',
-        email,
-        updatedAt: new Date().toISOString(),
-      }, { merge: true }).catch(() => {});
+    } catch (err: any) {
+      console.error('Google Sign-in error:', err);
+      if (err?.code === 'auth/popup-closed-by-user') {
+        return;
+      }
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -520,9 +522,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isStaff: userProfile?.role === 'staff' || userProfile?.role === 'admin',
     isCustomer: userProfile?.role === 'customer' || !userProfile,
     signInWithEmail,
+    signInWithGoogle,
     signUpWithEmail,
     signInAsGuest,
-    signInAsAdminDummy,
     logout,
     updateUserAddress,
     saveDeliveryAddress,

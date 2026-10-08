@@ -67,6 +67,75 @@ export const crmService = {
     }
   },
 
+  // Listen to orders for a specific user (by userId, phone, email, or orderIds)
+  subscribeToUserOrders(
+    params: { userId?: string | null; phone?: string | null; email?: string | null; orderIds?: string[] },
+    callback: (orders: Order[]) => void
+  ) {
+    try {
+      const q = query(collection(db, ORDERS_COL), orderBy('createdAt', 'desc'), limit(100));
+      return onSnapshot(
+        q,
+        (snapshot) => {
+          const allOrders: Order[] = snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<Order, 'id'>),
+          }));
+
+          const cleanTargetPhone = params.phone ? cleanPhoneId(params.phone) : '';
+          const targetEmail = params.email ? params.email.trim().toLowerCase() : '';
+          const targetIds = new Set(params.orderIds || []);
+
+          const userOrders = allOrders.filter((order) => {
+            if (targetIds.has(order.id)) return true;
+            if (params.userId && (order as any).userId === params.userId) return true;
+            if (targetEmail && (order as any).customerEmail?.toLowerCase() === targetEmail) return true;
+            if (cleanTargetPhone && cleanPhoneId(order.customerPhone) === cleanTargetPhone) return true;
+            return false;
+          });
+
+          callback(userOrders);
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.GET, ORDERS_COL);
+        }
+      );
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, ORDERS_COL);
+    }
+  },
+
+  // Fetch past orders once
+  async fetchUserOrders(params: {
+    userId?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    orderIds?: string[];
+  }): Promise<Order[]> {
+    try {
+      const q = query(collection(db, ORDERS_COL), orderBy('createdAt', 'desc'), limit(100));
+      const snapshot = await getDocs(q);
+      const allOrders: Order[] = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...(docSnap.data() as Omit<Order, 'id'>),
+      }));
+
+      const cleanTargetPhone = params.phone ? cleanPhoneId(params.phone) : '';
+      const targetEmail = params.email ? params.email.trim().toLowerCase() : '';
+      const targetIds = new Set(params.orderIds || []);
+
+      return allOrders.filter((order) => {
+        if (targetIds.has(order.id)) return true;
+        if (params.userId && (order as any).userId === params.userId) return true;
+        if (targetEmail && (order as any).customerEmail?.toLowerCase() === targetEmail) return true;
+        if (cleanTargetPhone && cleanPhoneId(order.customerPhone) === cleanTargetPhone) return true;
+        return false;
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, ORDERS_COL);
+    }
+  },
+
   // Listen to live customers
   subscribeToCustomers(callback: (customers: Customer[]) => void) {
     try {
@@ -113,6 +182,8 @@ export const crmService = {
 
   // Place order from storefront or CRM with Loyalty points tracking & discount awards
   async placeOrder(params: {
+    userId?: string;
+    customerEmail?: string;
     customerName: string;
     customerPhone: string;
     orderType: 'dine-in' | 'takeaway' | 'delivery';
@@ -120,6 +191,8 @@ export const crmService = {
     deliveryAddress?: string;
     itemsSummary: string;
     total: number;
+    foodTotal?: number;
+    deliveryFee?: number;
     paymentMethod: 'Cash' | 'Fonepay/QR' | 'Card';
     notes?: string;
     loyaltyRewardApplied?: string;
@@ -128,9 +201,16 @@ export const crmService = {
   }): Promise<string> {
     const orderId = 'HTP-' + Date.now().toString(36).toUpperCase() + '-' + Math.floor(100 + Math.random() * 900);
     const now = new Date().toISOString();
-    const pointsEarned = Math.floor(Math.max(0, params.total) / 10); // 1 point per Rs. 10 spent
+    
+    // Loyalty points awarded strictly on food items order only (excludes delivery fee)
+    const foodOrderAmount = typeof params.foodTotal === 'number'
+      ? params.foodTotal
+      : Math.max(0, params.total - (params.deliveryFee || 0));
+    const pointsEarned = Math.floor(Math.max(0, foodOrderAmount) / 10); // 1 point per Rs. 10 spent on food only
 
     const orderData: Omit<Order, 'id'> = {
+      ...(params.userId ? { userId: params.userId } : {}),
+      ...(params.customerEmail ? { customerEmail: params.customerEmail } : {}),
       customerName: params.customerName.trim().slice(0, 100),
       customerPhone: params.customerPhone.trim().slice(0, 20),
       orderType: params.orderType,

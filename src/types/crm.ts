@@ -146,6 +146,8 @@ export interface OrderItemRecord {
 
 export interface Order {
   id: string;
+  userId?: string;
+  customerEmail?: string;
   customerName: string;
   customerPhone: string;
   orderType: OrderType;

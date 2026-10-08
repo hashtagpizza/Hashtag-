@@ -14,6 +14,7 @@ import {
   ArrowRight,
   Plus,
   Minus,
+  Check,
   Trash2,
   X,
   CheckCircle2,
@@ -33,6 +34,7 @@ import {
   Sparkles,
   Camera,
   Upload,
+  Receipt,
 } from 'lucide-react';
 import {
   ASSETS,
@@ -43,6 +45,9 @@ import {
   MENU_ITEMS,
   TESTIMONIALS,
   MenuItem,
+  PIZZA_SIZE_ADDONS,
+  DIPS_ADDONS,
+  BEVERAGE_ADDONS,
 } from './constants';
 import { HashtagLogo } from './components/HashtagLogo';
 import { ResilientImage } from './components/ResilientImage';
@@ -59,6 +64,13 @@ import { AuthModal } from './components/auth/AuthModal';
 import { UserMenu } from './components/auth/UserMenu';
 import { DeliveryLocationPicker } from './components/delivery/DeliveryLocationPicker';
 import { HashtagAiBot } from './components/chat/HashtagAiBot';
+import { gmailService } from './services/gmailService';
+import { UserProfileModal } from './components/profile/UserProfileModal';
+import { OrderHistory } from './components/profile/OrderHistory';
+import {
+  OrderConfirmationTicketModal,
+  OrderTicketData,
+} from './components/orders/OrderConfirmationTicketModal';
 
 interface CartItem {
   cartKey: string;
@@ -83,6 +95,7 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCrmOpen, setIsCrmOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [lastAddedCartKey, setLastAddedCartKey] = useState<string | null>(null);
 
   // Checkout form state
   const [serviceType, setServiceType] = useState<'Delivery' | 'Take Away' | 'Dine In'>('Delivery');
@@ -93,18 +106,29 @@ export default function App() {
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number>(0.8);
   const [deliveryLandmark, setDeliveryLandmark] = useState<string>('Adarshnagar (Near Ghantaghar)');
   const [deliveryTier, setDeliveryTier] = useState<string>('Up to 1.0 km: Rs. 40');
+  const [isDeliveryOutOfRange, setIsDeliveryOutOfRange] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Table-side QR ordering state (Tables 1 - 8)
+  // User Profile Modal state
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  // Merged Drawer state: 'tray' (Your Order Tray) or 'orders' (My Orders)
+  const [drawerTab, setDrawerTab] = useState<'tray' | 'orders'>('tray');
+
+  // Dedicated Responsive Order Confirmation Ticket state
+  const [activeOrderTicket, setActiveOrderTicket] = useState<OrderTicketData | null>(null);
+  const [isOrderTicketModalOpen, setIsOrderTicketModalOpen] = useState(false);
+
+  // Table-side QR ordering state (Tables 1 - 10)
   const [selectedTable, setSelectedTable] = useState<number | null>(() => {
     if (typeof window !== 'undefined') {
       const param = new URLSearchParams(window.location.search).get('table');
       if (param) {
         const val = parseInt(param, 10);
-        if (val >= 1 && val <= 8) return val;
+        if (val >= 1 && val <= 10) return val;
       }
     }
     return null;
@@ -264,7 +288,20 @@ export default function App() {
     });
 
     setConfirmedOrderId(null);
-    triggerToast(`Added ${item.name}${sizeLabel ? ` (${sizeLabel})` : ''} to order`);
+    setLastAddedCartKey(cartKey);
+    setTimeout(() => {
+      setLastAddedCartKey((prev) => (prev === cartKey ? null : prev));
+    }, 1800);
+    triggerToast(`Added ${item.name}${sizeLabel ? ` (${sizeLabel})` : ''} to cart`);
+  };
+
+  const getItemCartQuantity = (item: MenuItem) => {
+    const sizeIdx = getSelectedSizeIndex(item);
+    const chosenSize = item.sizes && item.sizes[sizeIdx] ? item.sizes[sizeIdx] : undefined;
+    const sizeLabel = chosenSize ? chosenSize.label : undefined;
+    const cartKey = `${item.id}__${sizeLabel || 'standard'}`;
+    const found = cart.find((c) => c.cartKey === cartKey);
+    return { quantity: found ? found.quantity : 0, cartKey };
   };
 
   const updateCartQuantity = (cartKey: string, delta: number) => {
@@ -295,14 +332,104 @@ export default function App() {
     return 0;
   }, [appliedLoyaltyReward]);
 
+  const foodPayable = useMemo(() => {
+    return Math.max(0, cartSubtotal - loyaltyDiscount);
+  }, [cartSubtotal, loyaltyDiscount]);
+
   const finalPayable = useMemo(() => {
     const deliveryCost = serviceType === 'Delivery' ? deliveryFee : 0;
-    return Math.max(0, cartSubtotal - loyaltyDiscount + deliveryCost);
-  }, [cartSubtotal, loyaltyDiscount, serviceType, deliveryFee]);
+    return Math.max(0, foodPayable + deliveryCost);
+  }, [foodPayable, serviceType, deliveryFee]);
 
   const pointsToEarn = useMemo(() => {
-    return Math.floor(finalPayable / 10);
-  }, [finalPayable]);
+    // Loyalty points awarded strictly on food items order only (excludes delivery fee)
+    return Math.floor(foodPayable / 10);
+  }, [foodPayable]);
+
+  // Detected Pizza sizes in cart (S, M, L) to show size-specific add-on suggestions
+  const activePizzaSizesInCart = useMemo<'S' | 'M' | 'L'[]>(() => {
+    const sizes = new Set<'S' | 'M' | 'L'>();
+    for (const c of cart) {
+      const isPizza =
+        c.item.category?.toLowerCase().includes('pizza') ||
+        c.item.id?.startsWith('p-') ||
+        c.item.id?.startsWith('vc-') ||
+        c.item.id?.startsWith('nc-') ||
+        c.item.id?.startsWith('sp-') ||
+        Boolean(c.item.sizes && c.item.sizes.length > 0);
+      if (isPizza) {
+        const label = (c.sizeLabel || '').toLowerCase();
+        if (label.includes('large') || label.includes('(l)') || label === 'l' || label.includes('12')) {
+          sizes.add('L');
+        } else if (label.includes('medium') || label.includes('(m)') || label === 'm' || label.includes('9')) {
+          sizes.add('M');
+        } else {
+          sizes.add('S');
+        }
+      }
+    }
+    return Array.from(sizes);
+  }, [cart]);
+
+  const [selectedAddonSize, setSelectedAddonSize] = useState<'S' | 'M' | 'L'>('S');
+
+  // Auto-switch to first active pizza size when cart pizza sizes update
+  useEffect(() => {
+    if (activePizzaSizesInCart.length > 0 && !activePizzaSizesInCart.includes(selectedAddonSize)) {
+      setSelectedAddonSize(activePizzaSizesInCart[0]);
+    }
+  }, [activePizzaSizesInCart, selectedAddonSize]);
+
+  const getAddonInCartQuantity = (name: string, sizeLabel?: string) => {
+    const itemId = `addon-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    const cartKey = `${itemId}__${sizeLabel || 'standard'}`;
+    return cart.find((c) => c.cartKey === cartKey)?.quantity || 0;
+  };
+
+  const handleAddAddon = (
+    name: string,
+    price: number,
+    description: string,
+    sizeLabel?: string,
+    dietary: 'veg' | 'non-veg' = 'veg'
+  ) => {
+    const itemId = `addon-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    const syntheticItem: MenuItem = {
+      id: itemId,
+      name,
+      price,
+      description,
+      category: 'sides-pasta',
+      highlightGroup: 'all',
+      dietary,
+      image: '',
+    };
+    const cartKey = `${itemId}__${sizeLabel || 'standard'}`;
+    setCart((prev) => {
+      const existing = prev.find((c) => c.cartKey === cartKey);
+      if (existing) {
+        return prev.map((c) =>
+          c.cartKey === cartKey ? { ...c, quantity: c.quantity + 1 } : c
+        );
+      }
+      return [
+        ...prev,
+        {
+          cartKey,
+          item: syntheticItem,
+          sizeLabel,
+          unitPrice: price,
+          quantity: 1,
+        },
+      ];
+    });
+    setConfirmedOrderId(null);
+    setLastAddedCartKey(cartKey);
+    setTimeout(() => {
+      setLastAddedCartKey((prev) => (prev === cartKey ? null : prev));
+    }, 1800);
+    triggerToast(`Added ${name} (Rs. ${price}) to your order!`);
+  };
 
   const filteredMenuItems = useMemo(() => {
     return menuItems.filter((item) => {
@@ -320,93 +447,153 @@ export default function App() {
     });
   }, [menuItems, activeCategory, dietaryFilter, searchQuery]);
 
-  const buildWhatsAppOrderUrl = () => {
-    const isTableDineIn = serviceType === 'Dine In' && selectedTable;
+  const buildWhatsAppOrderUrl = (orderIdOverride?: string) => {
+    const ticket = activeOrderTicket;
+    const orderRef = orderIdOverride || confirmedOrderId || ticket?.orderId || 'NEW';
+    const currentMode = ticket
+      ? ticket.orderType === 'dine-in'
+        ? 'Dine In'
+        : ticket.orderType === 'delivery'
+        ? 'Delivery'
+        : 'Take Away'
+      : serviceType;
+    const currentTable = ticket?.tableNumber || selectedTable;
+    const isTableDineIn = currentMode === 'Dine In' && currentTable;
+    const currentName = ticket?.customerName || customerName;
+    const currentPhone = ticket?.customerPhone || customerPhone;
+    const currentAddress = ticket?.deliveryAddress || customerAddress;
+    const currentLandmark = ticket?.deliveryLandmark || deliveryLandmark;
+    const currentDistance = ticket?.deliveryDistanceKm || deliveryDistanceKm;
+    const currentFee = ticket?.deliveryFee ?? (serviceType === 'Delivery' ? deliveryFee : 0);
+    const currentNotes = ticket?.notes || orderNotes;
+    const currentRewardTitle = ticket?.loyaltyRewardTitle || appliedLoyaltyReward?.title;
+    const currentDiscount = ticket?.loyaltyDiscount || loyaltyDiscount;
+    const currentSubtotal = ticket?.subtotal ?? cartSubtotal;
+    const currentTotal = ticket?.total ?? finalPayable;
+    const currentPoints = ticket?.pointsEarned ?? pointsToEarn;
+
+    const itemLines =
+      ticket && ticket.items && ticket.items.length > 0
+        ? ticket.items.map(
+            (c) =>
+              `• ${c.quantity}x ${c.name}${c.sizeLabel ? ` (${c.sizeLabel})` : ''} — Rs. ${
+                c.totalPrice
+              }`
+          )
+        : cart.map(
+            (c) =>
+              `• ${c.quantity}x ${c.item.name}${
+                c.sizeLabel ? ` (${c.sizeLabel})` : ''
+              } — Rs. ${c.unitPrice * c.quantity}`
+          );
+
     const lines = [
       isTableDineIn
-        ? `*🍽️ NEW DINE-IN ORDER — TABLE #${selectedTable}*`
-        : `*NEW ORDER — HASHTAG PIZZA BIRGUNJ*`,
-      `Service Mode: ${serviceType}${isTableDineIn ? ` (Table #${selectedTable})` : ''}`,
-      customerName ? `Customer: ${customerName}` : null,
-      customerPhone ? `Phone: ${customerPhone}` : null,
-      isTableDineIn ? `Location: Table #${selectedTable} (Dine-in Sitting Area)` : null,
-      serviceType === 'Delivery' && customerAddress
-        ? `Delivery Destination: ${customerAddress}\n• Landmark: ${deliveryLandmark}\n• Road Distance: ${deliveryDistanceKm} km (Birgunj Oneway Route)\n• Delivery Fee: Rs. ${deliveryFee}`
+        ? `*🍽️ HASHTAG PIZZA BIRGUNJ — TABLE #${currentTable} ORDER*`
+        : `*🍕 HASHTAG PIZZA BIRGUNJ — OFFICIAL ORDER*`,
+      `• Ticket ID: *${orderRef}*`,
+      `• Service Mode: ${currentMode}${isTableDineIn ? ` (Table #${currentTable})` : ''}`,
+      currentName ? `• Customer: ${currentName}` : null,
+      currentPhone ? `• Mobile: ${currentPhone}` : null,
+      isTableDineIn ? `• Location: Table #${currentTable} (Dine-in Sitting Area)` : null,
+      currentMode === 'Delivery' && currentAddress
+        ? `• Delivery Destination: ${currentAddress}${
+            currentLandmark ? `\n• Landmark: ${currentLandmark}` : ''
+          }\n• Road Distance: ${currentDistance} km (Birgunj Oneway Route)\n• Delivery Fee: Rs. ${currentFee}`
         : null,
-      orderNotes ? `Note: ${orderNotes}` : null,
-      appliedLoyaltyReward
-        ? `🎁 Loyalty Reward: ${appliedLoyaltyReward.title} (${
-            appliedLoyaltyReward.type === 'free_item'
-              ? `Free ${appliedLoyaltyReward.freeItemName}`
-              : `-Rs. ${loyaltyDiscount}`
-          })`
+      currentNotes ? `• Cooking Note: ${currentNotes}` : null,
+      currentRewardTitle
+        ? `• Loyalty Perk: ${currentRewardTitle}${
+            currentDiscount ? ` (-Rs. ${currentDiscount})` : ''
+          }`
         : null,
       `--------------------------------`,
-      ...cart.map(
-        (c) =>
-          `• ${c.quantity}x ${c.item.name}${
-            c.sizeLabel ? ` (${c.sizeLabel})` : ''
-          } — Rs. ${c.unitPrice * c.quantity}`
-      ),
+      `*ORDERED ITEMS:*`,
+      ...itemLines,
       appliedLoyaltyReward?.type === 'free_item'
         ? `• 1x ${appliedLoyaltyReward.freeItemName} (FREE Loyalty Perk) — Rs. 0`
         : null,
       `--------------------------------`,
-      `Cart Subtotal: Rs. ${cartSubtotal}`,
-      serviceType === 'Delivery' ? `Delivery Fee: +Rs. ${deliveryFee}` : null,
-      loyaltyDiscount > 0 ? `Loyalty Discount: -Rs. ${loyaltyDiscount}` : null,
-      `*Total Payable: Rs. ${finalPayable}*`,
-      `⭐ Points to be Earned: +${pointsToEarn} pts (1 pt / Rs. 10)`,
+      `• Food Subtotal: Rs. ${currentSubtotal}`,
+      currentMode === 'Delivery' && currentFee > 0 ? `• Delivery Fee: +Rs. ${currentFee}` : null,
+      currentDiscount > 0 ? `• Loyalty Discount: -Rs. ${currentDiscount}` : null,
+      `*TOTAL PAYABLE: Rs. ${currentTotal}*`,
+      `• Payment Mode: Cash / Fonepay QR (Pending upon receipt)`,
+      `• Loyalty Earned: +${currentPoints} pts (1 pt / Rs. 10 on food only)`,
+      `--------------------------------`,
+      `Please confirm receipt and dispatch. Dhanyabad! 🙏`,
     ].filter(Boolean);
 
-    return `https://wa.me/${CONTACT_INFO.whatsapp}?text=${encodeURIComponent(
+    return `https://api.whatsapp.com/send?phone=${CONTACT_INFO.whatsapp}&text=${encodeURIComponent(
       lines.join('\n')
     )}`;
   };
 
-  const handleConfirmDirectOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeOrderPlacement = async (viaWhatsApp: boolean) => {
     if (cart.length === 0) {
       setFormError('Please add at least one item from the menu first.');
       return;
     }
     if (!customerName.trim() || !customerPhone.trim()) {
-      setFormError('Please enter your name and phone number so we can confirm your order.');
+      setFormError('Please enter your name and 10-digit mobile number so we can confirm your order.');
       return;
     }
     const phoneDigits = customerPhone.replace(/[^0-9]/g, '');
     if (phoneDigits.length !== 10) {
-      setFormError('Please enter a valid 10-digit mobile number for delivery (e.g. 98XXXXXXXX)');
+      setFormError('Please enter a valid 10-digit mobile number for delivery/contact (e.g. 98XXXXXXXX)');
       return;
     }
     if (serviceType === 'Delivery' && !customerAddress.trim()) {
       setFormError('Please pin your delivery location or provide an address in Birgunj.');
       return;
     }
+    if (serviceType === 'Delivery' && (deliveryDistanceKm > 5.0 || isDeliveryOutOfRange)) {
+      setFormError(
+        'We will only deliver till 5 Km within Birgunj itself. We cannot deliver beyond Birgunj. Please pin your delivery address within 5 km or choose Take Away or Dine In.'
+      );
+      return;
+    }
     setFormError(null);
 
+    const itemsSummary = cart
+      .map((c) => `${c.quantity}x ${c.item.name}${c.sizeLabel ? ` (${c.sizeLabel})` : ''}`)
+      .join(', ');
+
+    const orderTypeMap = {
+      Delivery: 'delivery' as const,
+      'Take Away': 'takeaway' as const,
+      'Dine In': 'dine-in' as const,
+    };
+
+    const cartSnapshot = [...cart];
+    const subtotalSnapshot = cartSubtotal;
+    const finalPayableSnapshot = finalPayable;
+    const foodPayableSnapshot = foodPayable;
+    const pointsToEarnSnapshot = pointsToEarn;
+    const deliveryFeeSnapshot = serviceType === 'Delivery' ? deliveryFee : 0;
+    const loyaltyDiscountSnapshot = loyaltyDiscount;
+    const rewardTitleSnapshot = appliedLoyaltyReward?.title;
+    const deliveryAddressSnapshot = customerAddress.trim();
+    const deliveryLandmarkSnapshot = deliveryLandmark;
+    const distanceKmSnapshot = deliveryDistanceKm;
+    const serviceTypeSnapshot = serviceType;
+    const selectedTableSnapshot = selectedTable;
+    const notesSnapshot = orderNotes.trim();
+
     try {
-      const itemsSummary = cart
-        .map((c) => `${c.quantity}x ${c.item.name}${c.sizeLabel ? ` (${c.sizeLabel})` : ''}`)
-        .join(', ');
-
-      const orderTypeMap = {
-        Delivery: 'delivery' as const,
-        'Take Away': 'takeaway' as const,
-        'Dine In': 'dine-in' as const,
-      };
-
       const orderId = await crmService.placeOrder({
+        userId: user?.uid,
+        customerEmail: user?.email,
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
-        orderType: orderTypeMap[serviceType],
-        tableNumber: serviceType === 'Dine In' && selectedTable ? selectedTable : undefined,
+        orderType: orderTypeMap[serviceTypeSnapshot],
+        tableNumber: serviceTypeSnapshot === 'Dine In' && selectedTableSnapshot ? selectedTableSnapshot : undefined,
         deliveryAddress:
-          serviceType === 'Delivery'
-            ? `${customerAddress.trim()} (Landmark: ${deliveryLandmark}, ${deliveryDistanceKm}km, Fee: Rs.${deliveryFee})`
-            : serviceType === 'Dine In'
-            ? selectedTable
-              ? `Table #${selectedTable} - Dine In Area`
+          serviceTypeSnapshot === 'Delivery'
+            ? `${deliveryAddressSnapshot} (Landmark: ${deliveryLandmarkSnapshot}, ${distanceKmSnapshot}km, Fee: Rs.${deliveryFeeSnapshot})`
+            : serviceTypeSnapshot === 'Dine In'
+            ? selectedTableSnapshot
+              ? `Table #${selectedTableSnapshot} - Dine In Area`
               : 'Dine In Sitting Area'
             : 'Counter Takeaway',
         itemsSummary: [
@@ -417,30 +604,232 @@ export default function App() {
         ]
           .filter(Boolean)
           .join(', '),
-        total: finalPayable,
+        total: finalPayableSnapshot,
+        foodTotal: foodPayableSnapshot,
+        deliveryFee: deliveryFeeSnapshot,
         paymentMethod: 'Fonepay/QR',
         notes: [
-          orderNotes.trim(),
-          serviceType === 'Delivery'
-            ? `[Delivery: Rs. ${deliveryFee}, ${deliveryDistanceKm} km, ${deliveryTier}]`
+          notesSnapshot,
+          serviceTypeSnapshot === 'Delivery'
+            ? `[Delivery: Rs. ${deliveryFeeSnapshot}, ${distanceKmSnapshot} km, ${deliveryTier}]`
             : '',
           appliedLoyaltyReward ? `[Loyalty Reward: ${appliedLoyaltyReward.title}]` : '',
         ]
           .filter(Boolean)
           .join(' · '),
         loyaltyRewardApplied: appliedLoyaltyReward?.id,
-        discountApplied: loyaltyDiscount,
+        discountApplied: loyaltyDiscountSnapshot,
         pointsToDeduct: appliedLoyaltyReward?.pointsCost,
       });
 
       setConfirmedOrderId(orderId);
+
+      // Persist order ID locally so Order History fetches it even for guest users
+      try {
+        const raw = localStorage.getItem('hashtag_my_orders');
+        const existing: string[] = raw ? JSON.parse(raw) : [];
+        const updated = [orderId, ...existing.filter((id) => id !== orderId)].slice(0, 50);
+        localStorage.setItem('hashtag_my_orders', JSON.stringify(updated));
+      } catch {
+        // Ignore localStorage errors
+      }
+
+      // Build dedicated responsive ticket data
+      const ticketData: OrderTicketData = {
+        orderId,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        customerEmail: user?.email,
+        orderType: orderTypeMap[serviceTypeSnapshot],
+        tableNumber: serviceTypeSnapshot === 'Dine In' && selectedTableSnapshot ? selectedTableSnapshot : undefined,
+        deliveryAddress: serviceTypeSnapshot === 'Delivery' ? deliveryAddressSnapshot : undefined,
+        deliveryLandmark: serviceTypeSnapshot === 'Delivery' ? deliveryLandmarkSnapshot : undefined,
+        deliveryDistanceKm: serviceTypeSnapshot === 'Delivery' ? distanceKmSnapshot : undefined,
+        deliveryFee: deliveryFeeSnapshot,
+        items: cartSnapshot.map((c) => ({
+          name: c.item.name,
+          quantity: c.quantity,
+          sizeLabel: c.sizeLabel,
+          unitPrice: c.unitPrice,
+          totalPrice: c.unitPrice * c.quantity,
+        })),
+        itemsSummary,
+        subtotal: subtotalSnapshot,
+        loyaltyDiscount: loyaltyDiscountSnapshot > 0 ? loyaltyDiscountSnapshot : undefined,
+        loyaltyRewardTitle: rewardTitleSnapshot,
+        total: finalPayableSnapshot,
+        pointsEarned: pointsToEarnSnapshot,
+        paymentMethod: 'Cash / Fonepay / eSewa',
+        paymentStatus: 'pending',
+        status: 'new',
+        createdAt: new Date().toISOString(),
+        notes: notesSnapshot || undefined,
+      };
+
+      setActiveOrderTicket(ticketData);
+      setIsOrderTicketModalOpen(true);
+      setIsCartOpen(false);
+
+      // Reset cart and checkout form
+      setCart([]);
+      setOrderNotes('');
+      setAppliedLoyaltyReward(null);
+
+      // Open WhatsApp directly if ordered via WhatsApp
+      if (viaWhatsApp) {
+        const waLink = buildWhatsAppOrderUrl(orderId);
+        try {
+          const a = document.createElement('a');
+          a.href = waLink;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } catch {
+          window.open(waLink, '_blank', 'noopener,noreferrer');
+        }
+      }
+
       triggerToast(
-        `Order confirmed! +${pointsToEarn} loyalty points credited to your phone number.`
+        viaWhatsApp
+          ? `Order logged & WhatsApp opened! +${pointsToEarnSnapshot} loyalty pts earned.`
+          : `Order confirmed! +${pointsToEarnSnapshot} loyalty pts earned.`
       );
+
+      // Dispatch automated order confirmation via Gmail API if user email or Gmail token is active
+      if (user?.email && gmailService.hasGmailAccess()) {
+        gmailService
+          .sendOrderConfirmationEmail({
+            orderId,
+            customerName: customerName.trim(),
+            customerEmail: user.email,
+            customerPhone: customerPhone.trim(),
+            serviceType: serviceTypeSnapshot,
+            itemsSummary,
+            total: finalPayableSnapshot,
+            deliveryAddress:
+              serviceTypeSnapshot === 'Delivery' ? deliveryAddressSnapshot : undefined,
+          })
+          .catch((e) => console.warn('Gmail receipt dispatch error:', e));
+      }
     } catch (err) {
       console.error('Order placement fallback note:', err);
       const randomCode = `HP-${Math.floor(1000 + Math.random() * 9000)}`;
       setConfirmedOrderId(randomCode);
+
+      // Persist fallback order ID locally so My Orders shows it
+      try {
+        const raw = localStorage.getItem('hashtag_my_orders');
+        const existing: string[] = raw ? JSON.parse(raw) : [];
+        const updated = [randomCode, ...existing.filter((id) => id !== randomCode)].slice(0, 50);
+        localStorage.setItem('hashtag_my_orders', JSON.stringify(updated));
+      } catch {
+        // Ignore localStorage errors
+      }
+
+      const fallbackTicket: OrderTicketData = {
+        orderId: randomCode,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        orderType: orderTypeMap[serviceTypeSnapshot],
+        tableNumber: serviceTypeSnapshot === 'Dine In' && selectedTableSnapshot ? selectedTableSnapshot : undefined,
+        deliveryAddress: serviceTypeSnapshot === 'Delivery' ? deliveryAddressSnapshot : undefined,
+        deliveryFee: deliveryFeeSnapshot,
+        items: cartSnapshot.map((c) => ({
+          name: c.item.name,
+          quantity: c.quantity,
+          sizeLabel: c.sizeLabel,
+          unitPrice: c.unitPrice,
+          totalPrice: c.unitPrice * c.quantity,
+        })),
+        itemsSummary,
+        subtotal: subtotalSnapshot,
+        total: finalPayableSnapshot,
+        pointsEarned: pointsToEarnSnapshot,
+        paymentMethod: 'Cash / Fonepay / eSewa',
+        paymentStatus: 'pending',
+        status: 'new',
+        createdAt: new Date().toISOString(),
+        notes: notesSnapshot || undefined,
+      };
+
+      setActiveOrderTicket(fallbackTicket);
+      setIsOrderTicketModalOpen(true);
+      setIsCartOpen(false);
+      setCart([]);
+
+      if (viaWhatsApp) {
+        const waLink = buildWhatsAppOrderUrl(randomCode);
+        try {
+          const a = document.createElement('a');
+          a.href = waLink;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } catch {
+          window.open(waLink, '_blank', 'noopener,noreferrer');
+        }
+      }
+    }
+  };
+
+  const handleConfirmDirectOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await executeOrderPlacement(false);
+  };
+
+  const handleOrderViaWhatsApp = async (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    await executeOrderPlacement(true);
+  };
+
+  const handleViewPastOrderTicket = (pastOrder: any) => {
+    const ticketData: OrderTicketData = {
+      orderId: pastOrder.id,
+      customerName: pastOrder.customerName,
+      customerPhone: pastOrder.customerPhone,
+      customerEmail: pastOrder.customerEmail,
+      orderType: pastOrder.orderType,
+      tableNumber: pastOrder.tableNumber,
+      deliveryAddress: pastOrder.deliveryAddress,
+      items: [
+        {
+          name: pastOrder.itemsSummary,
+          quantity: 1,
+          unitPrice: pastOrder.total,
+          totalPrice: pastOrder.total,
+        },
+      ],
+      itemsSummary: pastOrder.itemsSummary,
+      subtotal: pastOrder.foodTotal || pastOrder.total,
+      deliveryFee: pastOrder.deliveryFee || 0,
+      loyaltyDiscount: pastOrder.discountApplied,
+      total: pastOrder.total,
+      pointsEarned: pastOrder.pointsEarned || 0,
+      paymentMethod: pastOrder.paymentMethod || 'Cash / Fonepay / eSewa',
+      paymentStatus: pastOrder.paymentStatus || 'pending',
+      status: pastOrder.status || 'new',
+      createdAt: pastOrder.createdAt,
+      notes: pastOrder.notes,
+    };
+    setActiveOrderTicket(ticketData);
+    setIsOrderTicketModalOpen(true);
+  };
+
+  const handleReorder = (itemsSummary: string) => {
+    setIsProfileOpen(false);
+    const lower = itemsSummary.toLowerCase();
+    const matched = menuItems.find((m) => lower.includes(m.name.toLowerCase()));
+    if (matched) {
+      addToCart(matched);
+      setIsCartOpen(true);
+      triggerToast(`Reordered ${matched.name}! Added to order tray.`);
+    } else {
+      setIsCartOpen(true);
+      triggerToast('Order tray opened — select your favorite pizzas!');
     }
   };
 
@@ -492,18 +881,26 @@ export default function App() {
             </button>
           </nav>
 
-          {/* Zone 3: Streamlined Actions (Account / UserMenu + Order Tray Button + Mobile Toggle) */}
+          {/* Zone 3: Streamlined Actions (Account / UserMenu + My Orders + Order Tray + Mobile Toggle) */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             {/* User Account & Role-Based Menu */}
             <UserMenu
               onOpenCrm={() => setIsCrmOpen(true)}
               onOpenTableQr={() => setIsTableQrModalOpen(true)}
               onOpenLoyalty={() => setIsLoyaltyPassOpen(true)}
+              onOpenProfile={() => setIsProfileOpen(true)}
+              onOpenMyOrders={() => {
+                setDrawerTab('orders');
+                setIsCartOpen(true);
+              }}
             />
 
-            {/* Single High-Converting Responsive Order Tray Button */}
+            {/* High-Converting Responsive Order Tray Button (Hosts both Order Tray & My Orders tabs) */}
             <button
-              onClick={() => setIsCartOpen(true)}
+              onClick={() => {
+                setDrawerTab('tray');
+                setIsCartOpen(true);
+              }}
               className="relative inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#E31B23] hover:bg-[#c8141b] text-white text-xs sm:text-sm font-bold shadow-xs transition-all active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
               aria-label="Open order tray"
             >
@@ -615,6 +1012,22 @@ export default function App() {
                 >
                   Location & Contact
                 </button>
+                <button
+                  onClick={() => {
+                    setIsMobileNavOpen(false);
+                    setDrawerTab('orders');
+                    setIsCartOpen(true);
+                  }}
+                  className="text-left py-2 px-1 text-amber-900 font-bold flex items-center justify-between hover:text-[#E31B23] transition-colors border-b border-stone-100 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-amber-700" />
+                    <span>My Orders</span>
+                  </span>
+                  <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                    Live Status
+                  </span>
+                </button>
               </div>
 
               {/* Secondary Tools in Mobile Menu */}
@@ -639,7 +1052,7 @@ export default function App() {
                   className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs border border-stone-300 transition-colors cursor-pointer"
                 >
                   <QrCode className="w-3.5 h-3.5 text-stone-600" />
-                  <span>Table QR (8)</span>
+                  <span>Table QR (10)</span>
                 </button>
               </div>
 
@@ -1366,18 +1779,91 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Add to Order Button */}
-                    <button
-                      type="button"
-                      onClick={() => addToCart(item)}
-                      className="w-full py-2.5 px-4 rounded-lg bg-stone-900 hover:bg-[#E31B23] text-white text-xs sm:text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors whitespace-nowrap cursor-pointer"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>
-                        Add to Order
-                        {activeSize ? ` (${activeSize.shortLabel})` : ''}
-                      </span>
-                    </button>
+                    {/* Responsive Add to Cart / In-Cart Quantity Stepper */}
+                    {(() => {
+                      const { quantity: inCartQty, cartKey } = getItemCartQuantity(item);
+                      const isJustAdded = lastAddedCartKey === cartKey;
+
+                      if (inCartQty > 0) {
+                        return (
+                          <div className="flex items-center gap-2 w-full">
+                            {/* In-Card Quantity Stepper */}
+                            <div className="flex items-center justify-between bg-stone-100 rounded-lg p-1 border border-stone-300 flex-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateCartQuantity(cartKey, -1);
+                                }}
+                                className="w-8 h-8 rounded-md bg-white hover:bg-stone-200 text-stone-800 font-bold flex items-center justify-center shadow-xs transition-transform active:scale-90 cursor-pointer"
+                                aria-label="Decrease quantity in cart"
+                              >
+                                <Minus className="w-3.5 h-3.5" />
+                              </button>
+                              <span className="font-mono font-bold text-xs text-stone-900 px-1">
+                                {inCartQty} in Cart
+                              </span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateCartQuantity(cartKey, 1);
+                                }}
+                                className="w-8 h-8 rounded-md bg-[#E31B23] hover:bg-[#b8141b] text-white font-bold flex items-center justify-center shadow-xs transition-transform active:scale-90 cursor-pointer"
+                                aria-label="Increase quantity in cart"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            {/* View Cart Drawer */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsCartOpen(true);
+                              }}
+                              className="py-2.5 px-3 rounded-lg bg-stone-900 hover:bg-[#0047AB] text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                              title="View Cart Drawer"
+                            >
+                              <ShoppingBag className="w-3.5 h-3.5 text-amber-300" />
+                              <span>Cart</span>
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToCart(item);
+                          }}
+                          className={`w-full py-2.5 px-4 rounded-lg font-bold text-xs sm:text-sm inline-flex items-center justify-center gap-2 transition-all duration-150 whitespace-nowrap cursor-pointer shadow-xs active:scale-95 ${
+                            isJustAdded
+                              ? 'bg-emerald-600 text-white scale-[1.01]'
+                              : 'bg-stone-900 hover:bg-[#E31B23] text-white'
+                          }`}
+                          aria-label={`Add ${item.name} to cart`}
+                        >
+                          {isJustAdded ? (
+                            <>
+                              <Check className="w-4 h-4 text-white" />
+                              <span>Added to Cart!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="w-4 h-4" />
+                              <span>
+                                Add to Cart
+                                {activeSize ? ` (${activeSize.shortLabel})` : ''}
+                              </span>
+                            </>
+                          )}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -1452,14 +1938,70 @@ export default function App() {
                       Rs. {currentPrice}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => addToCart(item)}
-                      className="px-3.5 py-2 rounded-lg bg-stone-900 hover:bg-[#E31B23] text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors whitespace-nowrap cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add</span>
-                    </button>
+                    {(() => {
+                      const { quantity: inCartQty, cartKey } = getItemCartQuantity(item);
+                      const isJustAdded = lastAddedCartKey === cartKey;
+
+                      if (inCartQty > 0) {
+                        return (
+                          <div className="inline-flex items-center gap-1 bg-stone-100 rounded-lg p-0.5 border border-stone-300 shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateCartQuantity(cartKey, -1);
+                              }}
+                              className="w-7 h-7 rounded-md bg-white hover:bg-stone-200 text-stone-800 font-bold flex items-center justify-center shadow-xs transition-transform active:scale-90 cursor-pointer"
+                              aria-label="Decrease quantity"
+                            >
+                              <Minus className="w-3 h-3" />
+                            </button>
+                            <span className="w-6 text-center font-mono font-bold text-xs text-stone-900">
+                              {inCartQty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateCartQuantity(cartKey, 1);
+                              }}
+                              className="w-7 h-7 rounded-md bg-[#E31B23] hover:bg-[#b8141b] text-white font-bold flex items-center justify-center shadow-xs transition-transform active:scale-90 cursor-pointer"
+                              aria-label="Increase quantity"
+                            >
+                              <Plus className="w-3 h-3" />
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToCart(item);
+                          }}
+                          className={`px-3.5 py-2 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-all active:scale-95 whitespace-nowrap cursor-pointer shrink-0 ${
+                            isJustAdded
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-stone-900 hover:bg-[#E31B23] text-white'
+                          }`}
+                          aria-label={`Add ${item.name} to cart`}
+                        >
+                          {isJustAdded ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Added</span>
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Add to Cart</span>
+                            </>
+                          )}
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -1644,23 +2186,67 @@ export default function App() {
         </div>
       </footer>
 
+      {/* PERSISTENT RESPONSIVE FLOATING CART & CHECKOUT BAR */}
+      <AnimatePresence>
+        {totalCartItems > 0 && !isCartOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ duration: 0.18 }}
+            className="fixed bottom-4 left-4 right-20 sm:left-auto sm:right-28 z-40"
+          >
+            <button
+              type="button"
+              onClick={() => setIsCartOpen(true)}
+              className="flex items-center gap-3 px-4 py-3 bg-stone-950 hover:bg-black text-white rounded-2xl shadow-2xl border-2 border-amber-400 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer backdrop-blur-md"
+              aria-label="View Cart and Checkout"
+            >
+              <div className="relative shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-[#E31B23] flex items-center justify-center text-white shadow-md">
+                  <ShoppingBag className="w-5 h-5 text-white" />
+                </div>
+                <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-amber-400 text-stone-950 font-black text-xs flex items-center justify-center font-mono shadow-xs">
+                  {totalCartItems}
+                </span>
+              </div>
+              <div className="text-left">
+                <p className="text-xs sm:text-sm font-extrabold text-white leading-tight flex items-center gap-1.5">
+                  <span>Cart:</span>
+                  <span className="text-amber-300 font-mono">Rs. {cartSubtotal}</span>
+                </p>
+                <p className="text-[11px] text-stone-300 font-medium">
+                  {totalCartItems} {totalCartItems === 1 ? 'item' : 'items'} · Tap to View
+                </p>
+              </div>
+              <div className="ml-1 pl-2 border-l border-stone-800 flex items-center text-amber-300 text-xs font-bold gap-1 shrink-0">
+                <span className="hidden sm:inline">Checkout</span>
+                <ArrowRight className="w-4 h-4" />
+              </div>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Toast Notification for Cart Feedback */}
       <AnimatePresence>
         {toastMessage && (
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 16 }}
-            transition={{ duration: 0.16 }}
-            className="fixed bottom-6 right-6 z-50 bg-stone-900 text-white px-4 py-3 rounded-xl shadow-xl border border-stone-700 flex items-center gap-3 text-sm font-medium"
+            initial={{ opacity: 0, y: -16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -16, scale: 0.95 }}
+            transition={{ duration: 0.18 }}
+            className="fixed top-20 right-4 sm:right-6 z-50 bg-stone-950/95 text-white px-4 py-3 rounded-2xl shadow-2xl border border-stone-700/80 flex items-center gap-3 text-sm font-medium backdrop-blur-md"
           >
-            <CheckCircle2 className="w-4 h-4 text-[#FFD700] shrink-0" />
+            <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <Check className="w-4 h-4 text-emerald-400" />
+            </div>
             <span>{toastMessage}</span>
             <button
               onClick={() => setIsCartOpen(true)}
-              className="text-xs font-bold text-[#FFD700] underline ml-2 whitespace-nowrap cursor-pointer"
+              className="text-xs font-bold text-amber-300 hover:text-amber-200 underline ml-2 whitespace-nowrap cursor-pointer"
             >
-              View Order
+              View Cart →
             </button>
           </motion.div>
         )}
@@ -1683,80 +2269,157 @@ export default function App() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white z-50 shadow-2xl flex flex-col"
-              aria-label="Your Hashtag Pizza Order"
+              className="fixed top-0 right-0 bottom-0 w-full max-w-lg bg-white z-50 shadow-2xl flex flex-col"
+              aria-label="Your Hashtag Pizza Order and Past Orders"
             >
-              {/* Drawer Header */}
-              <div className="px-6 py-5 border-b border-stone-200 flex items-center justify-between">
-                <div>
-                  <h2 className="font-display text-lg font-extrabold text-stone-900">
-                    Your Order Tray
-                  </h2>
-                  <p className="text-xs text-stone-500">
-                    {CONTACT_INFO.address}
-                  </p>
+              {/* Drawer Header with Merged Tabs: Your Order Tray & My Orders */}
+              <div className="px-5 sm:px-6 py-4 border-b border-stone-200 shrink-0 bg-[#FAF8F5]">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <h2 className="font-display text-base sm:text-lg font-extrabold text-stone-900 leading-tight">
+                      {drawerTab === 'tray' ? 'Your Order Tray' : 'My Orders & Live Status'}
+                    </h2>
+                    <p className="text-[11px] text-stone-500">
+                      {CONTACT_INFO.address}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setIsCartOpen(false)}
+                    className="p-1.5 rounded-lg text-stone-500 hover:text-stone-900 hover:bg-stone-200/60 cursor-pointer transition-colors"
+                    aria-label="Close drawer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setIsCartOpen(false)}
-                  className="p-2 rounded-lg text-stone-500 hover:text-stone-900 hover:bg-stone-100 cursor-pointer"
-                  aria-label="Close order drawer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+
+                {/* Merged Segmented Tab Switcher */}
+                <div className="grid grid-cols-2 gap-1 p-1 bg-stone-200/70 rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() => setDrawerTab('tray')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      drawerTab === 'tray'
+                        ? 'bg-white text-stone-900 shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    <ShoppingBag className="w-3.5 h-3.5" />
+                    <span>Your Order Tray</span>
+                    {totalCartItems > 0 && (
+                      <span className="min-w-[18px] h-4.5 px-1 rounded-full bg-[#E31B23] text-white text-[10px] font-black font-mono inline-flex items-center justify-center">
+                        {totalCartItems}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDrawerTab('orders')}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      drawerTab === 'orders'
+                        ? 'bg-white text-stone-900 shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    <Receipt className="w-3.5 h-3.5 text-amber-700" />
+                    <span>My Orders</span>
+                  </button>
+                </div>
               </div>
 
               {/* Drawer Content */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {confirmedOrderId ? (
-                  <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-6 text-center space-y-4">
-                    <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto" />
-                    <div>
-                      <p className="text-xs font-mono uppercase text-emerald-700 font-semibold">
-                        Order Reference {confirmedOrderId}
-                      </p>
-                      <h3 className="font-display text-xl font-bold text-stone-900 mt-1">
-                        Order Logged for Kitchen Prep!
-                      </h3>
-                      <p className="text-xs text-stone-600 mt-1">
-                        {serviceType} · Total Rs. {cartSubtotal} (Cash / eSewa / Fonepay on {serviceType})
-                      </p>
-                    </div>
-                    <p className="text-xs text-stone-600 leading-relaxed">
-                      Click below to send your instant confirmation ticket to our Birgunj kitchen WhatsApp ({CONTACT_INFO.whatsappDisplay}) for immediate dispatch.
+              {drawerTab === 'orders' ? (
+                <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+                  <div className="mb-3.5">
+                    <h3 className="font-extrabold text-sm sm:text-base text-stone-900">
+                      Live Kitchen & Past Orders
+                    </h3>
+                    <p className="text-xs text-stone-500">
+                      Synced live from our Birgunj kitchen. Track prep status, view receipts, or reorder.
                     </p>
-                    <a
-                      href={buildWhatsAppOrderUrl()}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="w-full py-3 px-4 rounded-xl bg-[#E31B23] hover:bg-[#c8141b] text-white text-sm font-semibold inline-flex items-center justify-center gap-2"
-                    >
-                      <MessageCircle className="w-4 h-4" />
-                      <span>Send Kitchen Ticket on WhatsApp</span>
-                    </a>
                   </div>
-                ) : null}
+                  <OrderHistory
+                    onReorder={handleReorder}
+                    onCloseParent={() => setIsCartOpen(false)}
+                    onViewTicket={handleViewPastOrderTicket}
+                    phoneFilterOverride={user?.phoneNumber || customerPhone || undefined}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+                    {activeOrderTicket && cart.length === 0 ? (
+                      <div className="bg-emerald-50/90 border border-emerald-300 rounded-2xl p-5 text-center space-y-3.5 shadow-xs">
+                        <CheckCircle2 className="w-9 h-9 text-emerald-600 mx-auto" />
+                        <div>
+                          <p className="text-[11px] font-mono uppercase text-emerald-800 font-bold tracking-wider">
+                            Official Ticket #{activeOrderTicket.orderId}
+                          </p>
+                          <h3 className="font-display text-lg font-bold text-stone-900 mt-0.5">
+                            Order Logged for Kitchen Prep!
+                          </h3>
+                          <p className="text-xs text-stone-600 mt-1">
+                            {activeOrderTicket.orderType === 'dine-in'
+                              ? `Table #${activeOrderTicket.tableNumber || 1} Dine-In`
+                              : activeOrderTicket.orderType === 'delivery'
+                              ? 'Birgunj Doorstep Delivery'
+                              : 'Counter Takeaway'} · Total Rs. {activeOrderTicket.total}
+                          </p>
+                        </div>
 
-                {/* Itemized List */}
-                {cart.length === 0 ? (
-                  <div className="text-center py-12">
-                    <ShoppingBag className="w-10 h-10 text-stone-300 mx-auto mb-3" />
-                    <p className="font-display font-bold text-stone-800 mb-1">
-                      Your order tray is empty
-                    </p>
-                    <p className="text-xs text-stone-500 mb-5">
-                      Add pizzas, CFC buckets, burgers, or momos from the menu.
-                    </p>
-                    <button
-                      onClick={() => {
-                        setIsCartOpen(false);
-                        scrollToSection('interactive-menu');
-                      }}
-                      className="px-4 py-2 rounded-lg bg-[#0047AB] text-white text-xs font-semibold cursor-pointer"
-                    >
-                      Browse Menu
-                    </button>
-                  </div>
-                ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setIsOrderTicketModalOpen(true)}
+                            className="w-full py-2.5 px-3 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                            <span>View Full Ticket</span>
+                          </button>
+
+                          <a
+                            href={buildWhatsAppOrderUrl()}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>Open WhatsApp</span>
+                          </a>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* Itemized List */}
+                    {cart.length === 0 ? (
+                      <div className="text-center py-12">
+                        <ShoppingBag className="w-10 h-10 text-stone-300 mx-auto mb-3" />
+                        <p className="font-display font-bold text-stone-800 mb-1">
+                          Your order tray is empty
+                        </p>
+                        <p className="text-xs text-stone-500 mb-5">
+                          Add pizzas, CFC buckets, burgers, or momos from the menu.
+                        </p>
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => {
+                              setIsCartOpen(false);
+                              scrollToSection('interactive-menu');
+                            }}
+                            className="px-4 py-2 rounded-xl bg-[#0047AB] text-white text-xs font-semibold cursor-pointer"
+                          >
+                            Browse Menu
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDrawerTab('orders')}
+                            className="px-4 py-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold cursor-pointer transition-colors"
+                          >
+                            View My Orders →
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
                   <div className="space-y-3">
                     {cart.map((c) => (
                       <div
@@ -1802,6 +2465,308 @@ export default function App() {
                   </div>
                 )}
 
+                {/* ORDER TRAY ADD-ONS & BEVERAGES SUGGESTIONS */}
+                {cart.length > 0 && (
+                  <div className="space-y-4 pt-3 border-t border-stone-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Sparkles className="w-4 h-4 text-amber-500" />
+                        <h3 className="font-bold text-xs uppercase tracking-wider text-stone-900">
+                          Recommended Add-Ons & Dips
+                        </h3>
+                      </div>
+                      <span className="text-[10px] text-stone-500 font-medium">
+                        Instant 1-Tap Add
+                      </span>
+                    </div>
+
+                    {/* PIZZA SIZE SPECIFIC ADD-ONS */}
+                    {activePizzaSizesInCart.length > 0 ? (
+                      <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-3.5 space-y-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base">🍕</span>
+                            <div>
+                              <p className="text-xs font-black text-stone-900">
+                                Pizza Add-Ons ({selectedAddonSize === 'S' ? 'Small' : selectedAddonSize === 'M' ? 'Medium' : 'Large'} Size)
+                              </p>
+                              <p className="text-[10px] text-stone-500">
+                                Suggestions tailored for selected pizza size in your tray
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Size Selector for Pizzas in Tray */}
+                          {activePizzaSizesInCart.length > 1 && (
+                            <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-amber-300">
+                              {activePizzaSizesInCart.map((sz) => (
+                                <button
+                                  key={sz}
+                                  type="button"
+                                  onClick={() => setSelectedAddonSize(sz)}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all cursor-pointer ${
+                                    selectedAddonSize === sz
+                                      ? 'bg-amber-400 text-stone-950 shadow-xs'
+                                      : 'text-stone-600 hover:text-stone-900'
+                                  }`}
+                                >
+                                  {sz}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Pizza Size Addon Items Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {[
+                            {
+                              name: `Cheese Burst ${selectedAddonSize === 'S' ? 'Small' : selectedAddonSize === 'M' ? 'Medium' : 'Large'}`,
+                              label: 'Cheese Burst',
+                              price: selectedAddonSize === 'S' ? 120 : selectedAddonSize === 'M' ? 200 : 300,
+                              desc: 'Molten cheese stuffed crust',
+                              dietary: 'veg' as const,
+                            },
+                            {
+                              name: `Extra Cheese ${selectedAddonSize === 'S' ? 'Small' : selectedAddonSize === 'M' ? 'Medium' : 'Large'}`,
+                              label: 'Extra Cheese',
+                              price: selectedAddonSize === 'S' ? 80 : selectedAddonSize === 'M' ? 140 : 200,
+                              desc: '100% mozzarella & cheddar layer',
+                              dietary: 'veg' as const,
+                            },
+                            {
+                              name: `Veg Topping ${selectedAddonSize === 'S' ? 'Small' : selectedAddonSize === 'M' ? 'Medium' : 'Large'}`,
+                              label: 'Veg Topping',
+                              price: selectedAddonSize === 'S' ? 40 : selectedAddonSize === 'M' ? 60 : 80,
+                              desc: 'Crisp capsicum, corn, mushrooms',
+                              dietary: 'veg' as const,
+                            },
+                            {
+                              name: `Chicken Topping ${selectedAddonSize === 'S' ? 'Small' : selectedAddonSize === 'M' ? 'Medium' : 'Large'}`,
+                              label: 'Chicken Topping',
+                              price: selectedAddonSize === 'S' ? 60 : selectedAddonSize === 'M' ? 80 : 100,
+                              desc: 'Juicy spiced chicken chunks',
+                              dietary: 'non-veg' as const,
+                            },
+                          ].map((addon) => {
+                            const sizeFullName = selectedAddonSize === 'S' ? 'Small' : selectedAddonSize === 'M' ? 'Medium' : 'Large';
+                            const inCartQty = getAddonInCartQuantity(addon.name, sizeFullName);
+
+                            return (
+                              <div
+                                key={addon.name}
+                                className="bg-white p-2.5 rounded-xl border border-amber-200/80 shadow-xs flex items-center justify-between gap-2"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <span
+                                      className={`w-2 h-2 rounded-full shrink-0 ${
+                                        addon.dietary === 'veg' ? 'bg-emerald-500' : 'bg-rose-500'
+                                      }`}
+                                    />
+                                    <p className="text-xs font-bold text-stone-900 truncate">
+                                      {addon.label}{' '}
+                                      <span className="text-[10px] font-mono text-amber-700 bg-amber-100 px-1 py-0.2 rounded">
+                                        {sizeFullName}
+                                      </span>
+                                    </p>
+                                  </div>
+                                  <p className="text-[10px] text-stone-500 truncate mt-0.5">
+                                    {addon.desc}
+                                  </p>
+                                  <p className="text-xs font-black text-[#E31B23] font-mono mt-0.5">
+                                    Rs. {addon.price}
+                                  </p>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleAddAddon(
+                                      addon.name,
+                                      addon.price,
+                                      addon.desc,
+                                      sizeFullName,
+                                      addon.dietary
+                                    )
+                                  }
+                                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                                    inCartQty > 0
+                                      ? 'bg-amber-400 hover:bg-amber-500 text-stone-950 shadow-xs'
+                                      : 'bg-stone-900 hover:bg-stone-800 text-white'
+                                  }`}
+                                >
+                                  {inCartQty > 0 ? (
+                                    <>
+                                      <Check className="w-3 h-3 text-stone-950" />
+                                      <span>+{inCartQty}</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Plus className="w-3 h-3" />
+                                      <span>Add</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* DIPS SECTION (Rs. 40 each) */}
+                    <div className="bg-stone-50 border border-stone-200 rounded-2xl p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm">🥣</span>
+                          <p className="text-xs font-bold text-stone-900">
+                            Chef's Signature Dips
+                          </p>
+                        </div>
+                        <span className="text-[10px] font-bold text-stone-600 font-mono bg-stone-200/70 px-1.5 py-0.5 rounded">
+                          Rs. 40 Each
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { name: 'Cheesy Dip', desc: 'Melted creamy cheese dip' },
+                          { name: 'Mayo Dip', desc: 'Garlic creamy mayonnaise' },
+                          { name: 'Harisha Dip', desc: 'Zesty Moroccan spiced chilli' },
+                          { name: 'Mint Mayo Dip', desc: 'Fresh mint & herb mayo' },
+                        ].map((dip) => {
+                          const inCartQty = getAddonInCartQuantity(dip.name);
+                          return (
+                            <div
+                              key={dip.name}
+                              className="bg-white p-2 rounded-xl border border-stone-200 shadow-xs flex items-center justify-between gap-1.5"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-bold text-stone-900 truncate">
+                                  {dip.name}
+                                </p>
+                                <p className="text-[10px] font-black text-amber-700 font-mono">
+                                  Rs. 40
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleAddAddon(dip.name, 40, dip.desc, undefined, 'veg')}
+                                className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                                  inCartQty > 0
+                                    ? 'bg-amber-400 text-stone-950'
+                                    : 'bg-stone-100 hover:bg-amber-100 text-stone-700 hover:text-amber-900 border border-stone-200'
+                                }`}
+                                title={`Add ${dip.name}`}
+                              >
+                                {inCartQty > 0 ? (
+                                  <span className="text-[10px] font-black px-1">+{inCartQty}</span>
+                                ) : (
+                                  <Plus className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* BEVERAGES SECTION (Bottles only - No Can) */}
+                    <div className="bg-stone-50 border border-stone-200 rounded-2xl p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm">🍾</span>
+                          <p className="text-xs font-bold text-stone-900">
+                            Chilled Soft Drinks (Bottle Only · No Can)
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-stone-500 font-mono">
+                          250ml & 750ml
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        {[
+                          {
+                            name: 'Coke (250 ml Bottle)',
+                            label: 'Coke 250ml Bottle',
+                            price: 60,
+                            desc: 'Chilled bottle · No can only bottle',
+                          },
+                          {
+                            name: 'Sprite (250 ml Bottle)',
+                            label: 'Sprite 250ml Bottle',
+                            price: 60,
+                            desc: 'Chilled bottle · No can only bottle',
+                          },
+                          {
+                            name: 'Fanta (250 ml Bottle)',
+                            label: 'Fanta 250ml Bottle',
+                            price: 60,
+                            desc: 'Chilled bottle · No can only bottle',
+                          },
+                          {
+                            name: 'Coke (750 ml Bottle)',
+                            label: 'Coke 750ml Sharing Bottle',
+                            price: 120,
+                            desc: 'Large chilled bottle',
+                          },
+                          {
+                            name: 'Sprite (750 ml Bottle)',
+                            label: 'Sprite 750ml Sharing Bottle',
+                            price: 120,
+                            desc: 'Large chilled bottle',
+                          },
+                        ].map((bev) => {
+                          const inCartQty = getAddonInCartQuantity(bev.name);
+                          return (
+                            <div
+                              key={bev.name}
+                              className="bg-white p-2.5 rounded-xl border border-stone-200 shadow-xs flex items-center justify-between gap-2"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-bold text-stone-900 truncate">
+                                  {bev.label}
+                                </p>
+                                <p className="text-[10px] text-stone-500 truncate">
+                                  {bev.desc}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-xs font-black text-[#E31B23] font-mono">
+                                  Rs. {bev.price}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddAddon(bev.name, bev.price, bev.desc, undefined, 'veg')}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                    inCartQty > 0
+                                      ? 'bg-amber-400 hover:bg-amber-500 text-stone-950'
+                                      : 'bg-stone-900 hover:bg-stone-800 text-white'
+                                  }`}
+                                >
+                                  {inCartQty > 0 ? (
+                                    <>
+                                      <Check className="w-3 h-3 text-stone-950" />
+                                      <span>+{inCartQty}</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Plus className="w-3 h-3" />
+                                      <span>Add</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Service Type & Customer Details Form */}
                 {cart.length > 0 && (
                   <form
@@ -1844,15 +2809,15 @@ export default function App() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
                             <Utensils className="w-3.5 h-3.5 text-amber-700" />
-                            <span>Select Your Table (1 – 8):</span>
+                            <span>Select Your Table (1 – 10):</span>
                           </div>
                           <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-mono">
                             {selectedTable ? `Table #${selectedTable}` : 'No Table Selected'}
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-4 gap-1.5">
-                          {[1, 2, 3, 4, 5, 6, 7, 8].map((t) => (
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((t) => (
                             <button
                               key={t}
                               type="button"
@@ -2036,29 +3001,55 @@ export default function App() {
                     <button
                       type="submit"
                       form="checkout-form"
-                      className="w-full py-3 px-4 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-sm font-semibold transition-colors cursor-pointer"
+                      className="w-full py-3 px-4 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-sm font-semibold transition-colors cursor-pointer flex items-center justify-center gap-2"
                     >
-                      Confirm Order Ticket
+                      <Receipt className="w-4 h-4" />
+                      <span>Confirm Order Ticket</span>
                     </button>
-                    <a
-                      href={buildWhatsAppOrderUrl()}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="w-full py-3 px-4 rounded-xl bg-[#E31B23] hover:bg-[#c8141b] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors"
+                    <button
+                      type="button"
+                      onClick={handleOrderViaWhatsApp}
+                      className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
                     >
                       <MessageCircle className="w-4 h-4" />
                       <span>Order Directly via WhatsApp</span>
-                    </a>
+                    </button>
                   </div>
                 </div>
               )}
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+            </>
+          )}
+        </motion.aside>
+      </>
+    )}
+  </AnimatePresence>
 
-      {/* Authentication & Authorization Modal */}
-      <AuthModal />
+  {/* Authentication & Authorization Modal */}
+  <AuthModal />
+
+  {/* User Profile Modal */}
+  <UserProfileModal
+    isOpen={isProfileOpen}
+    onClose={() => setIsProfileOpen(false)}
+    onOpenLoyalty={() => setIsLoyaltyPassOpen(true)}
+    onOpenMyOrders={() => {
+      setIsProfileOpen(false);
+      setDrawerTab('orders');
+      setIsCartOpen(true);
+    }}
+  />
+
+  {/* Official Responsive Confirmation Order Ticket Modal */}
+  <OrderConfirmationTicketModal
+    isOpen={isOrderTicketModalOpen}
+    onClose={() => setIsOrderTicketModalOpen(false)}
+    order={activeOrderTicket}
+    onViewOrderHistory={() => {
+      setIsOrderTicketModalOpen(false);
+      setDrawerTab('orders');
+      setIsCartOpen(true);
+    }}
+  />
 
       {/* Hashtag Pizza CRM & Kitchen Control Modal */}
       <CrmPortal isOpen={isCrmOpen} onClose={() => setIsCrmOpen(false)} />

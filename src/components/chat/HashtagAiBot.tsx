@@ -13,125 +13,54 @@ import {
   Flame,
   ChevronDown,
   RefreshCw,
+  ExternalLink,
+  Zap,
+  Cpu,
+  Globe,
 } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
-import { CONTACT_INFO } from '../../constants';
 
 interface ChatMessage {
   id: string;
   sender: 'user' | 'bot';
   text: string;
   timestamp: string;
+  modelUsed?: string;
+  mapLinks?: { title: string; uri: string }[];
 }
 
 const BOT_NAME = 'Hashtag Pizza AI Bot';
 
-const SYSTEM_INSTRUCTION = `
-You are "${BOT_NAME}", the official AI assistant of Hashtag Pizza Birgunj, Nepal.
-Slogan: "Think Food, Think Hashtag Pizza".
-
-ABOUT HASHTAG PIZZA:
-- Location: Shop No. 01, Ground Floor, RB Complex, Loharpatti, Adarshnagar, Birgunj, Nepal.
-- Phone / WhatsApp: 9861370721 / Landline: 051-591718.
-- Hours: 12:00 PM – 09:30 PM Daily.
-- Cuisine: Hand-stretched artisan pizzas baked in a commercial 24-inch conveyor oven, Kurkure Momos, Crispy Fried Chicken (CFC), Gourmet Burgers, Shakes, and Sides.
-
-OFFICIAL BIRGUNJ DELIVERY RATES:
-- Up to 1.0 km: Rs. 40 (e.g. Adarshnagar, Ghantaghar, Maisthan)
-- 1.0 km to 2.0 km: Rs. 50 (e.g. Ranighat, Panitanki, Murli)
-- 2.0 km to 3.0 km: Rs. 60 (e.g. Shreepur, Vishwa)
-- 3.0 km to 4.0 km: Rs. 70 (e.g. Pipra, Powerhouse / Bypass)
-- 4.0 km to 5.0 km: Rs. 80 (e.g. Birgunj Customs / Inarwa, Gandak / National Medical College)
-- Above 5.0 km: Rs. 80 + Rs. 15 per additional km.
-- Important note on delivery routing: Riders strictly follow Birgunj One-Way traffic rules (such as the Ghantaghar to Adarshnagar loop) to guarantee safe and hot delivery to the customer's exact pinned doorstep.
-- Customer feature: Customers can save up to 5 delivery locations on our platform for 1-tap checkout, and must provide a valid 10-digit phone number.
-
-POPULAR DISHES & PRICING:
-- Artisan Pizzas: Margherita (from Rs. 180), Paneer Overloaded, Hashtag Special Chicken Pizza, Peppy Paneer, Deluxe Veggie, Chicken BBQ.
-- Kurkure Momos: Veg, Paneer, Chicken Kurkure Momos (crispy golden crust served with spicy timur chutney).
-- CFC (Crispy Fried Chicken): Crunchy chicken drumsticks, wings, strips with special dipping sauce.
-- Burgers: Crispy Chicken Burger, Veg Supreme Burger, Paneer Tikka Burger.
-- Loyalty Program: 100 bonus welcome points on signup. Earn 1 point per Rs. 10 spent. Redeem for free drinks, momos, pizzas, or bill discounts.
-
-TONE & PERSONALITY:
-- Friendly, hospitable, enthusiastic, and helpful.
-- Keep answers concise, clear, and easy to read on mobile.
-- Use emojis like 🍕, 🛵, 🥟, 🍗, 📍 appropriately.
-- If asked how to order, encourage adding items to cart on this website or messaging on WhatsApp: 9861370721.
-`;
-
 const QUICK_PROMPTS = [
-  '🛵 What are the delivery rates?',
-  '🍕 Recommend top 3 pizzas',
-  '🍗 Tell me about CFC Chicken',
-  '🥟 What is Kurkure Momo?',
-  '📍 Store location & hours',
+  '⏰ What are your opening hours?',
+  '🛵 What are the delivery rates in Birgunj?',
+  '🍕 Recommend top 3 pizzas for dinner',
+  '🍗 Tell me about CFC Fried Chicken',
+  '🥟 What makes Kurkure Momos special?',
+  '📍 Where is your store located?',
 ];
 
 export const HashtagAiBot: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [complexity, setComplexity] = useState<'general' | 'fast' | 'complex'>('general');
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
       sender: 'bot',
-      text: `Namaste! 🙏 I am **${BOT_NAME}**, your virtual food buddy at Hashtag Pizza Birgunj.\n\nAsk me about our pizzas, Kurkure momos, CFC chicken, or Birgunj delivery rates! How can I help you today? 🍕✨`,
+      text: `Namaste! 🙏 I am **${BOT_NAME}**, your smart food buddy for Hashtag Pizza Birgunj.\n\nI can recommend pizzas, verify Birgunj delivery rates, and locate our store using real-time Google Maps Grounding! How can I help you today? 🍕✨`,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const genAiClientRef = useRef<GoogleGenAI | null>(null);
-
-  // Initialize Gemini client safely
-  useEffect(() => {
-    try {
-      const apiKey =
-        (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) ||
-        (import.meta as any).env?.VITE_GEMINI_API_KEY ||
-        '';
-
-      if (apiKey) {
-        genAiClientRef.current = new GoogleGenAI({ apiKey });
-      }
-    } catch (e) {
-      console.warn('Could not initialize GoogleGenAI client:', e);
-    }
-  }, []);
 
   useEffect(() => {
     if (isOpen) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isOpen]);
-
-  // Fallback intelligent responder if API key is not yet set
-  const generateLocalResponse = (query: string): string => {
-    const q = query.toLowerCase();
-
-    if (q.includes('rate') || q.includes('delivery') || q.includes('charge') || q.includes('distance') || q.includes('km')) {
-      return `🛵 **Hashtag Pizza Birgunj Official Delivery Rates:**\n\n- **Up to 1.0 km:** Rs. 40 (Adarshnagar, Ghantaghar, Maisthan)\n- **1.0 km – 2.0 km:** Rs. 50 (Ranighat, Panitanki, Murli)\n- **2.0 km – 3.0 km:** Rs. 60 (Shreepur, Vishwa)\n- **3.0 km – 4.0 km:** Rs. 70 (Pipra, Powerhouse / Bypass)\n- **4.0 km – 5.0 km:** Rs. 80 (Customs / Inarwa, Gandak / NMC)\n- **Above 5.0 km:** Rs. 80 + Rs. 15 per extra km.\n\n🚦 *Our delivery routes strictly follow Birgunj One-Way traffic rules (Ghantaghar loop) to ensure hot & safe doorstep delivery!* You can pin your exact location on our checkout map and save up to 5 addresses.`;
-    }
-
-    if (q.includes('pizza') || q.includes('recommend') || q.includes('best') || q.includes('menu')) {
-      return `🍕 **Top Recommendations at Hashtag Pizza:**\n\n1. **Hashtag Special Chicken Pizza:** Loaded with succulent chicken, bell peppers, mozzarella & chef's special herbs.\n2. **Paneer Overloaded:** Fresh paneer cubes, crisp capsicum, onions & rich gooey cheese.\n3. **Classic Margherita:** Pure mozzarella, herb tomato puree on hand-stretched dough.\n\nAvailable in Personal (7"), Medium (9"), and Large (12")! You can add them straight to your cart right here on the menu!`;
-    }
-
-    if (q.includes('cfc') || q.includes('chicken') || q.includes('fried')) {
-      return `🍗 **Crispy Fried Chicken (CFC):**\n\nPrepared fresh using our signature secret marinade and conveyor-belt precision fryer. Crispy on the outside, tender & juicy on the inside! Served with our creamy garlic-mayo dip. Try our CFC Strips or Chicken Buckets!`;
-    }
-
-    if (q.includes('momo') || q.includes('kurkure')) {
-      return `🥟 **Famous Birgunj Kurkure Momos:**\n\nOur crispy-coated Kurkure Momos are deep-fried to golden perfection and tossed in spicy peri-peri seasoning. Served with our zesty authentic Nepali tomato-timur chutney. Available in Veg, Paneer, and Chicken!`;
-    }
-
-    if (q.includes('location') || q.includes('address') || q.includes('hour') || q.includes('time') || q.includes('where')) {
-      return `📍 **Hashtag Pizza Birgunj:**\n- **Address:** Shop No. 01, Ground Floor, RB Complex, Loharpatti, Adarshnagar, Birgunj\n- **Operating Hours:** 12:00 PM – 09:30 PM Daily\n- **Phone / WhatsApp:** 9861370721 / 051-591718\n\nDine-in, takeaway, and fast doorstep delivery across Birgunj!`;
-    }
-
-    return `Thank you for asking! We serve freshly baked artisan pizzas, crunchy Kurkure momos, and Crispy Fried Chicken (CFC) from RB Complex, Adarshnagar. You can easily pin your delivery location, save up to 5 addresses, and track your loyalty points! Would you like help choosing a pizza or checking delivery rates to your area? 🍕`;
-  };
 
   const handleSend = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
@@ -148,50 +77,67 @@ export const HashtagAiBot: React.FC = () => {
     setInput('');
     setLoading(true);
 
+    // Prepare multi-turn history payload
+    const historyPayload = messages
+      .filter((m) => m.id !== 'welcome')
+      .map((m) => ({
+        role: m.sender === 'user' ? 'user' : 'model',
+        text: m.text,
+      }));
+
     try {
-      let botReply = '';
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: query,
+          history: historyPayload,
+          complexity,
+          location: { lat: 27.0135, lng: 84.8770 },
+        }),
+      });
 
-      if (genAiClientRef.current) {
-        try {
-          const response = await genAiClientRef.current.models.generateContent({
-            model: 'gemini-3.8-flash',
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: `${SYSTEM_INSTRUCTION}\n\nUser Question: ${query}` }],
-              },
-            ],
-          });
-          botReply = response.text || '';
-        } catch (apiErr) {
-          console.warn('Gemini API call failed, using local assistant knowledge base:', apiErr);
-          botReply = generateLocalResponse(query);
-        }
-      } else {
-        botReply = generateLocalResponse(query);
+      if (!response.ok) {
+        throw new Error(`Chat API error: ${response.statusText}`);
       }
 
-      if (!botReply) {
-        botReply = generateLocalResponse(query);
-      }
+      const data = await response.json();
 
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'bot',
-        text: botReply,
+        text: data.text || 'Thank you for messaging Hashtag Pizza Birgunj!',
+        modelUsed: data.modelUsed,
+        mapLinks: data.mapLinks || [],
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
       setMessages((prev) => [...prev, botMsg]);
-    } catch (err) {
-      console.error('Bot response error:', err);
-      const errorReply: ChatMessage = {
+    } catch (err: any) {
+      console.warn('Backend chat API failed, displaying local response:', err);
+
+      // Local fallback
+      const fallbackText =
+        query.toLowerCase().includes('rate') || query.toLowerCase().includes('delivery')
+          ? `🛵 **Hashtag Pizza Birgunj Official Delivery Rates (Max 5 km):**\n\n- **Up to 1.0 km:** Rs. 40 (Adarshnagar, Ghantaghar, Maisthan)\n- **1.0 km – 2.0 km:** Rs. 50 (Ranighat, Panitanki, Murli)\n- **2.0 km – 3.0 km:** Rs. 60 (Shreepur, Vishwa)\n- **3.0 km – 4.0 km:** Rs. 70 (Pipra, Powerhouse / Bypass)\n- **4.0 km – 5.0 km:** Rs. 80 (Birgunj Customs / Inarwa, Gandak / NMC)\n- **Beyond 5.0 km:** Delivery not available (we only deliver within 5 km inside Birgunj).\n\n🚦 Calculated via Birgunj One-Way traffic rules for hot doorstep dispatch.`
+          : query.toLowerCase().includes('hour') || query.toLowerCase().includes('timing') || query.toLowerCase().includes('open')
+          ? `⏰ **Hashtag Pizza Birgunj Opening Hours:**\n\nWe are open **11:30 AM – 9:30 PM Daily** for Dine In, Take Away, and Doorstep Delivery across Birgunj! 🍕 Visit us at Shop No. 01, Ground Floor, RB Complex, Adarshnagar.`
+          : `We serve hot artisan pizzas, crispy Kurkure Momos, and CFC fried chicken at RB Complex, Adarshnagar, Birgunj. Opening Hours: 11:30 AM – 9:30 PM Daily. Hotline: 9861370721 / 051-591718. Would you like to check out our menu highlights? 🍕`;
+
+      const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: 'bot',
-        text: generateLocalResponse(query),
+        text: fallbackText,
+        mapLinks: [
+          {
+            title: 'Hashtag Pizza (RB Complex, Adarshnagar) on Google Maps',
+            uri: 'https://maps.google.com/?q=27.0135,84.8770',
+          },
+        ],
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      setMessages((prev) => [...prev, errorReply]);
+
+      setMessages((prev) => [...prev, botMsg]);
     } finally {
       setLoading(false);
     }
@@ -220,39 +166,84 @@ export const HashtagAiBot: React.FC = () => {
             <p className="text-xs font-black uppercase tracking-wider leading-none">
               Hashtag AI Bot
             </p>
-            <p className="text-[10px] text-amber-200 font-medium">Ask Menu & Delivery</p>
+            <p className="text-[10px] text-amber-200 font-medium">Maps Grounded · Gemini</p>
           </div>
         </button>
       )}
 
       {/* CHAT WINDOW MODAL */}
       {isOpen && (
-        <div className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-50 w-[92vw] sm:w-[380px] h-[520px] max-h-[85vh] bg-white rounded-3xl shadow-2xl border border-stone-200 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200">
+        <div className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-50 w-[94vw] sm:w-[410px] h-[550px] max-h-[88vh] bg-white rounded-3xl shadow-2xl border border-stone-200 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-5 duration-200">
           {/* Header */}
-          <div className="px-4 py-3.5 bg-gradient-to-r from-[#164699] via-[#0047AB] to-[#164699] text-white flex items-center justify-between shadow-md">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center shadow-inner">
-                <Sparkles className="w-5 h-5 text-[#FFD700]" />
+          <div className="px-4 py-3 bg-gradient-to-r from-[#164699] via-[#0047AB] to-[#164699] text-white flex flex-col gap-2 shadow-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center shadow-inner">
+                  <Sparkles className="w-5 h-5 text-[#FFD700]" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm tracking-tight flex items-center gap-1.5">
+                    <span>{BOT_NAME}</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
+                  </h3>
+                  <p className="text-[10px] text-blue-100 font-medium">
+                    Maps Grounding · Menu & Rates Assistant
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-extrabold text-sm tracking-tight flex items-center gap-1.5">
-                  <span>{BOT_NAME}</span>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>
-                </h3>
-                <p className="text-[10px] text-blue-100 font-medium">
-                  Hashtag Pizza Birgunj Smart Assistant
-                </p>
-              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="p-1.5 rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer"
+                aria-label="Close Chat"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsOpen(false)}
-              className="p-1.5 rounded-full hover:bg-white/20 text-white/80 hover:text-white transition-colors cursor-pointer"
-              aria-label="Close Chat"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            {/* Model & Grounding Mode Selector */}
+            <div className="flex items-center gap-1 bg-black/20 p-1 rounded-xl text-[10px]">
+              <button
+                type="button"
+                onClick={() => setComplexity('general')}
+                className={`flex-1 py-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-colors ${
+                  complexity === 'general'
+                    ? 'bg-white text-stone-900 shadow-xs'
+                    : 'text-blue-100 hover:text-white'
+                }`}
+                title="Gemini 3.5 Flash with Google Maps Grounding"
+              >
+                <Globe className="w-3 h-3 text-[#0047AB]" />
+                <span>Maps Grounded</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setComplexity('fast')}
+                className={`flex-1 py-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-colors ${
+                  complexity === 'fast'
+                    ? 'bg-white text-stone-900 shadow-xs'
+                    : 'text-blue-100 hover:text-white'
+                }`}
+                title="Gemini 3.1 Flash Lite for quick response"
+              >
+                <Zap className="w-3 h-3 text-amber-500" />
+                <span>Fast Lite</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setComplexity('complex')}
+                className={`flex-1 py-1 rounded-lg font-bold flex items-center justify-center gap-1 transition-colors ${
+                  complexity === 'complex'
+                    ? 'bg-white text-stone-900 shadow-xs'
+                    : 'text-blue-100 hover:text-white'
+                }`}
+                title="Gemini 3.1 Pro Preview for complex culinary recommendations"
+              >
+                <Cpu className="w-3 h-3 text-purple-600" />
+                <span>Pro Gourmet</span>
+              </button>
+            </div>
           </div>
 
           {/* Messages Container */}
@@ -268,21 +259,47 @@ export const HashtagAiBot: React.FC = () => {
                   </div>
                 )}
 
-                <div
-                  className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-xs shadow-xs leading-relaxed whitespace-pre-line ${
-                    m.sender === 'user'
-                      ? 'bg-[#0047AB] text-white rounded-tr-xs font-medium'
-                      : 'bg-white text-stone-800 rounded-tl-xs border border-stone-200'
-                  }`}
-                >
-                  {m.text}
-                  <span
-                    className={`block text-[9px] mt-1 text-right ${
-                      m.sender === 'user' ? 'text-blue-200' : 'text-stone-400'
+                <div className={`max-w-[85%] space-y-2`}>
+                  <div
+                    className={`rounded-2xl px-3.5 py-2.5 text-xs shadow-xs leading-relaxed whitespace-pre-line ${
+                      m.sender === 'user'
+                        ? 'bg-[#0047AB] text-white rounded-tr-xs font-medium'
+                        : 'bg-white text-stone-800 rounded-tl-xs border border-stone-200'
                     }`}
                   >
-                    {m.timestamp}
-                  </span>
+                    {m.text}
+                    <span
+                      className={`block text-[9px] mt-1 text-right ${
+                        m.sender === 'user' ? 'text-blue-200' : 'text-stone-400'
+                      }`}
+                    >
+                      {m.timestamp}
+                    </span>
+                  </div>
+
+                  {/* Google Maps Grounding Links (Required by GMP policy) */}
+                  {m.mapLinks && m.mapLinks.length > 0 && (
+                    <div className="space-y-1 pt-0.5">
+                      <p className="text-[10px] font-bold text-stone-500 flex items-center gap-1">
+                        <MapPin className="w-3 h-3 text-[#E31B23]" />
+                        <span>Google Maps Grounded Locations:</span>
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {m.mapLinks.map((link, idx) => (
+                          <a
+                            key={idx}
+                            href={link.uri}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 text-[#0047AB] text-[11px] font-semibold transition-colors"
+                          >
+                            <span className="truncate max-w-[200px]">{link.title}</span>
+                            <ExternalLink className="w-3 h-3 shrink-0" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {m.sender === 'user' && (
@@ -302,7 +319,9 @@ export const HashtagAiBot: React.FC = () => {
                   <span className="w-1.5 h-1.5 rounded-full bg-stone-400 animate-bounce"></span>
                   <span className="w-1.5 h-1.5 rounded-full bg-stone-400 animate-bounce [animation-delay:0.2s]"></span>
                   <span className="w-1.5 h-1.5 rounded-full bg-stone-400 animate-bounce [animation-delay:0.4s]"></span>
-                  <span className="text-[11px] ml-1">Thinking...</span>
+                  <span className="text-[11px] ml-1">
+                    {complexity === 'general' ? 'Consulting Google Maps...' : 'Thinking...'}
+                  </span>
                 </div>
               </div>
             )}
@@ -336,7 +355,7 @@ export const HashtagAiBot: React.FC = () => {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask Hashtag Pizza AI Bot..."
+              placeholder="Ask menu, delivery rates, or Birgunj locations..."
               className="flex-1 px-3.5 py-2 bg-stone-50 border border-stone-300 rounded-xl text-xs text-stone-900 focus:outline-none focus:border-[#0047AB] focus:bg-white transition-all"
             />
             <button

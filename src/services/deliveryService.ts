@@ -18,6 +18,8 @@ export interface DeliveryCalculationResult {
   onewayNotice?: string;
   isLongestRoute: boolean;
   isSimulatedFallback?: boolean;
+  isOutOfRange: boolean;
+  outOfRangeNotice?: string;
 }
 
 // Hashtag Pizza Official Store Coordinates (RB Complex, Loharpatti, Adarshnagar, Birgunj)
@@ -27,6 +29,9 @@ export const STORE_COORDINATES = {
   name: 'Hashtag Pizza (RB Complex, Adarshnagar)',
   address: 'Shop No. 01, Ground Floor, RB Complex, Loharpatti, Adarshnagar, Birgunj',
 };
+
+// Maximum delivery radius strictly enforced: 5.0 km within Birgunj
+export const MAX_DELIVERY_RADIUS_KM = 5.0;
 
 // Popular Birgunj Delivery Landmarks for quick-pinning
 export interface BirgunjLandmark {
@@ -156,44 +161,49 @@ export const BIRGUNJ_LANDMARKS: BirgunjLandmark[] = [
 // 2.0 km to 3.0 km: Rs. 60
 // 3.0 km to 4.0 km: Rs. 70
 // 4.0 km to 5.0 km: Rs. 80
-// Above 5 km: Rs. 80 + Rs. 15 per additional km
+// Beyond 5 km: Delivery NOT available (Maximum 5 km within Birgunj itself)
 export function calculateDeliveryFeeFromDistance(distanceKm: number): {
   fee: number;
   tier: string;
+  isOutOfRange: boolean;
 } {
   const km = Math.max(0.1, distanceKm);
 
   if (km <= 1.0) {
     return {
       fee: 40,
-      tier: 'Up to 1.0 km (e.g. Adarshnagar, Ghantaghar, Maisthan)',
+      tier: 'Up to 1.0 km: Rs. 40 (e.g. Adarshnagar, Ghantaghar, Maisthan)',
+      isOutOfRange: false,
     };
   } else if (km <= 2.0) {
     return {
       fee: 50,
-      tier: '1.0 km to 2.0 km (e.g. Ranighat, Panitanki, Murli)',
+      tier: '1.0 km to 2.0 km: Rs. 50 (e.g. Ranighat, Panitanki, Murli)',
+      isOutOfRange: false,
     };
   } else if (km <= 3.0) {
     return {
       fee: 60,
-      tier: '2.0 km to 3.0 km (e.g. Shreepur, Vishwa)',
+      tier: '2.0 km to 3.0 km: Rs. 60 (e.g. Shreepur, Vishwa)',
+      isOutOfRange: false,
     };
   } else if (km <= 4.0) {
     return {
       fee: 70,
-      tier: '3.0 km to 4.0 km (e.g. Pipra, Powerhouse / Bypass)',
+      tier: '3.0 km to 4.0 km: Rs. 70 (e.g. Pipra, Powerhouse / Bypass)',
+      isOutOfRange: false,
     };
   } else if (km <= 5.0) {
     return {
       fee: 80,
-      tier: '4.0 km to 5.0 km (e.g. Birgunj Customs / Inarwa, Gandak / NMC)',
+      tier: '4.0 km to 5.0 km: Rs. 80 (e.g. Birgunj Customs / Inarwa, Gandak / NMC)',
+      isOutOfRange: false,
     };
   } else {
-    const extraKm = Math.ceil(km - 5.0);
-    const fee = 80 + extraKm * 15;
     return {
-      fee,
-      tier: `Beyond 5.0 km (${km.toFixed(1)} km: Rs. 80 base + Rs. ${extraKm * 15} distance surcharge)`,
+      fee: 0,
+      tier: `Beyond 5.0 km (${km.toFixed(1)} km): Outside Delivery Zone (We only deliver within 5 km in Birgunj)`,
+      isOutOfRange: true,
     };
   }
 }
@@ -281,7 +291,7 @@ export async function computeDeliveryRoute(
           durationMin = Math.max(10, Math.ceil(seconds / 60));
         }
 
-        const { fee, tier } = calculateDeliveryFeeFromDistance(distanceKm);
+        const { fee, tier, isOutOfRange } = calculateDeliveryFeeFromDistance(distanceKm);
 
         return {
           distanceKm,
@@ -293,6 +303,10 @@ export async function computeDeliveryRoute(
             'Calculated via Birgunj one-way road flow (Ghantaghar / Maisthan loop) to ensure realistic rider travel time.',
           isLongestRoute: true,
           isSimulatedFallback: false,
+          isOutOfRange,
+          outOfRangeNotice: isOutOfRange
+            ? 'We only deliver up to 5 km within Birgunj itself. We cannot deliver beyond Birgunj. Please choose Take Away or Dine In.'
+            : undefined,
         };
       }
     } catch (err) {
@@ -329,7 +343,7 @@ export async function computeDeliveryRoute(
   // Calculate longest safe route considering rush-hour oneway detours
   const longestRoadDistanceKm = Number((roadDistanceKm * 1.08).toFixed(2));
 
-  const { fee, tier } = calculateDeliveryFeeFromDistance(longestRoadDistanceKm);
+  const { fee, tier, isOutOfRange } = calculateDeliveryFeeFromDistance(longestRoadDistanceKm);
   const estimatedMins = Math.round(15 + longestRoadDistanceKm * 4.5);
 
   return {
@@ -342,5 +356,9 @@ export async function computeDeliveryRoute(
       'Distance accounts for Birgunj one-way traffic regulations (Adarshnagar–Ghantaghar loop) for exact doorstep dispatch.',
     isLongestRoute: true,
     isSimulatedFallback: true,
+    isOutOfRange,
+    outOfRangeNotice: isOutOfRange
+      ? 'We only deliver up to 5 km within Birgunj itself. We cannot deliver beyond Birgunj. Please choose Take Away or Dine In.'
+      : undefined,
   };
 }

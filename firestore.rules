@@ -43,6 +43,8 @@ service cloud.firestore {
       return data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 100 &&
              data.customerPhone is string && data.customerPhone.size() >= 7 && data.customerPhone.size() <= 20 &&
              data.orderType in ['dine-in', 'takeaway', 'delivery'] &&
+             (!('userId' in data) || (data.userId is string && data.userId.size() <= 128)) &&
+             (!('customerEmail' in data) || (data.customerEmail is string && data.customerEmail.size() <= 100)) &&
              (!('deliveryAddress' in data) || (data.deliveryAddress is string && data.deliveryAddress.size() <= 250)) &&
              data.itemsSummary is string && data.itemsSummary.size() > 0 && data.itemsSummary.size() <= 1000 &&
              data.total is number && data.total >= 0 &&
