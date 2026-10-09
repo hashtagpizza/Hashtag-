@@ -16,7 +16,7 @@ import { UserProfile, UserRole, AuthContextType } from '../types/auth';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const ADMIN_EMAIL = 'hashtagpizzainfo@gmail.com';
+const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || 'hashtagpizzainfo@gmail.com').trim().toLowerCase();
 
 const AUTH_STORAGE_KEY = 'hashtag_auth_profile';
 
